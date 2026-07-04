@@ -82,6 +82,18 @@ def cancel_loan(loan_id: UUID, db: Session = Depends(get_db)):
     result = loan_service.cancel(db, loan_id)
     if not result:
         raise HTTPException(status_code=404, detail="Loan not found")
+
+    # --- THE FIX: Save the cancellation to the Audit Log ---
+    from app.models.audit_log import AuditLog
+    audit_entry = AuditLog(
+        loan_id=loan_id,
+        action="Cancelled",
+        description="Loan was manually cancelled. Remaining balance wiped to $0."
+    )
+    db.add(audit_entry)
+    db.commit()
+    # -------------------------------------------------------
+
     return result
 
 @router.get("/{loan_id}/payments", response_model=List[PaymentResponse])
