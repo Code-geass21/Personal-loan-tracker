@@ -1,37 +1,25 @@
 import { useState, useEffect } from 'react'
 
 export function useTheme() {
-  // THE FIX: Check local storage synchronously FIRST, so we never accidentally
-  // overwrite the saved theme with a default 'light' on initial load!
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('theme') || 'light'
-  })
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
 
-  // Load theme from DB on mount
   useEffect(() => {
-    // Set the initial DOM attribute immediately so there is no visual flash
+    // 1. First, apply whatever we have locally so there's no visual flash
     document.documentElement.setAttribute('data-theme', theme)
 
+    // 2. Then, ask the Database if it has a better answer
     fetch('/api/settings/')
-      .then(r => {
-        if (!r.ok) throw new Error('API not available');
-        return r.json();
-      })
+      .then(r => r.json())
       .then(data => {
-        const t = data.theme || theme
-        setTheme(t)
-        document.documentElement.setAttribute('data-theme', t)
-        localStorage.setItem('theme', t)
+        if (data.theme) {
+          setTheme(data.theme)
+          document.documentElement.setAttribute('data-theme', data.theme)
+          localStorage.setItem('theme', data.theme)
+        }
       })
-      .catch(() => {
-        // Fallback to localStorage if API fails (or if the DB doesn't exist yet)
-        const t = localStorage.getItem('theme') || 'light'
-        setTheme(t)
-        document.documentElement.setAttribute('data-theme', t)
-      })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => console.log("DB unreachable, using local theme"))
+  }, [])
 
-  // Apply theme change when user clicks toggle
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('theme', theme)
@@ -41,7 +29,6 @@ export function useTheme() {
     const newTheme = theme === 'light' ? 'dark' : 'light'
     setTheme(newTheme)
 
-    // Save to DB
     try {
       await fetch(`/api/settings/theme`, {
         method: 'PATCH',
@@ -49,7 +36,7 @@ export function useTheme() {
         body: JSON.stringify({ value: newTheme })
       })
     } catch {
-      // Silent fail — localStorage still safely saves it!
+      console.log("Could not save theme to DB, relying on local storage")
     }
   }
 
