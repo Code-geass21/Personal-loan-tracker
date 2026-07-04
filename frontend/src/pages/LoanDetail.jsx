@@ -123,7 +123,6 @@ export default function LoanDetail() {
     finally { setSaving(false) }
   }
 
-  // <--- LOUD DIAGNOSTIC ADD-FEE FUNCTION --->
   const addFee = async () => {
     if (!feeForm.amount) {
       alert("WARNING: The amount field is empty!");
@@ -138,7 +137,7 @@ export default function LoanDetail() {
         amount: parseFloat(feeForm.amount),
         status: feeForm.status || "pending",
         tax_rate: parseFloat(feeForm.tax_rate) || 0,
-        tax_amount: 0 // Sent explicitly to satisfy the backend
+        tax_amount: 0
       };
 
       console.log("Sending Fee Data to Backend:", payload);
@@ -228,6 +227,30 @@ export default function LoanDetail() {
     catch { toast.error('Failed to cancel loan') }
   }
 
+  const downloadStatement = async (e) => {
+    const format = e.target.value;
+    if (!format) return;
+
+    try {
+      const response = await fetch(`/api/loans/${id}/statement/download?format=${format}`);
+      const blob = await response.blob();
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Loan_Statement.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+
+      e.target.value = "";
+      load();
+    } catch (error) {
+      console.error("Failed to download statement", error);
+      alert("Error generating statement.");
+    }
+  };
+
   if (loading) return <div className="spinner-wrap"><div className="spinner" /></div>
   if (!loan)   return <div className="empty"><div className="empty-text">Loan not found</div></div>
 
@@ -262,6 +285,8 @@ export default function LoanDetail() {
               {loan.person_nickname && ` (${loan.person_nickname})`}
             </div>
           </div>
+
+          {/* ACTION BUTTONS GROUP */}
           <div style={{ display: 'flex', gap: 8 }}>
             {loan.status !== 'cancelled' && loan.status !== 'settled' && (
               <>
@@ -273,8 +298,21 @@ export default function LoanDetail() {
                 </button>
               </>
             )}
+
             <button className="btn btn-secondary btn-sm" onClick={openEditModal}>✏ Edit Loan</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => exportLoanStatement(id)}> Statement</button>
+
+            <select
+                className="btn btn-secondary btn-sm"
+                onChange={downloadStatement}
+                defaultValue=""
+                style={{ cursor: 'pointer', appearance: 'none', paddingRight: '24px' }}
+            >
+                <option value="" disabled>📄 Export Statement</option>
+                <option value="pdf">Download as PDF</option>
+                <option value="xlsx">Download as Excel</option>
+                <option value="txt">Download as Text</option>
+            </select>
+
             <button className="btn btn-danger btn-sm" onClick={remove}><Trash2 size={13} /> Delete</button>
           </div>
         </div>
@@ -420,7 +458,7 @@ export default function LoanDetail() {
           )}
         </div>
       )}
-      {/* ---------------- NEW TABS START HERE ---------------- */}
+
       {tab === 'attachments' && (
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -447,32 +485,20 @@ export default function LoanDetail() {
                   {attachments.map(a => (
                     <tr key={a.id}>
                       <td style={{ fontWeight: 600 }}>{a.original_name || a.file_name || a.filename || 'Document'}</td>
-
-                      {/* FIX 1: Native JavaScript Date for Exact Time + Seconds */}
                       <td style={{ color: 'var(--text-secondary)' }}>
                         {a.uploaded_at ? (() => {
                           const d = new Date(a.uploaded_at);
                           const pad = (n) => n.toString().padStart(2, '0');
-
                           let hours = d.getHours();
                           const ampm = hours >= 12 ? 'pm' : 'am';
                           hours = hours % 12;
-                          hours = hours ? hours : 12; // the hour '0' should be '12'
-
+                          hours = hours ? hours : 12;
                           return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(hours)}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ampm}`;
                         })() : '—'}
                       </td>
-
                       <td>
-                        {/* FIX 2: Added a View button next to the Delete button */}
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <a
-                            href={`/api/attachments/${a.id}/download`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn btn-secondary btn-sm"
-                            style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}
-                          >
+                          <a href={`/api/attachments/${a.id}/download`} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
                             👁 View
                           </a>
                           <button className="btn btn-danger btn-sm" onClick={() => removeAttachment(a.id)}>
@@ -550,7 +576,7 @@ export default function LoanDetail() {
           )}
         </div>
       )}
-      {/* ---------------- NEW TABS END HERE ---------------- */}
+
       {preCloseModal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setPreCloseModal(false)}>
           <div className="modal" style={{ maxWidth: 500 }}>
@@ -612,7 +638,6 @@ export default function LoanDetail() {
         </div>
       )}
 
-      {/* PHASE 4: SMART PAYMENT MODAL */}
       {payModal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setPayModal(false)}>
           <div className="modal">
@@ -627,7 +652,6 @@ export default function LoanDetail() {
               </label>
             </div>
 
-            {/* IF MANUAL SPLIT IS CHECKED, SHOW EXACT BREAKDOWN BOXES */}
             {payForm.is_manual ? (
               <div className="grid-2" style={{ gap: 12, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--border-color)' }}>
                 <div className="form-group">
@@ -698,7 +722,6 @@ export default function LoanDetail() {
         </div>
       )}
 
-      {/* Add Fee Modal */}
       {feeModal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setFeeModal(false)}>
           <div className="modal">
@@ -733,7 +756,6 @@ export default function LoanDetail() {
         </div>
       )}
 
-      {/* Edit Loan Modal */}
       {editModal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditModal(false)}>
           <div className="modal">
