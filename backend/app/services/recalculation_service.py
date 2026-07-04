@@ -1,14 +1,23 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
+import calendar
 from app.utils.finance import calculate_pro_rata_interest, calculate_tax
+
+def _get_next_month_start(current_date: date) -> date:
+    """Helper to find the 1st of the next month for exact date slicing."""
+    _, last_day = calendar.monthrange(current_date.year, current_date.month)
+    return date(current_date.year, current_date.month, last_day) + timedelta(days=1)
 
 def recalculate_loan_state(db: Session, loan_id: str):
     # 1. Fetch Loan Details
     loan = db.execute(text("SELECT * FROM loans WHERE id = :id"), {"id": str(loan_id)}).mappings().first()
     if not loan:
         return
+
+    # Clear the old ledger so we can write fresh, accurate receipts
+    db.execute(text("DELETE FROM interest_ledger WHERE loan_id = :id"), {"id": str(loan_id)})
 
     # 2. Fetch all Payments
     payments = db.execute(text(
@@ -39,37 +48,70 @@ def recalculate_loan_state(db: Session, loan_id: str):
 
     last_event_date = loan["date_issued"]
 
+    # --- THE MAGIC FIX: The Monthly Chunker ---
+    def log_monthly_chunks(start_d: date, end_d: date, current_principal: Decimal):
+        nonlocal total_interest_accrued, unpaid_interest
+
+        curr = start_d
+        while curr < end_d:
+            next_m = _get_next_month_start(curr)
+            chunk_end = min(next_m, end_d)
+
+            days_in_chunk = (chunk_end - curr).days
+            if days_in_chunk > 0:
+                chunk_int = calculate_pro_rata_interest(current_principal, entered_rate, days_in_chunk, interest_period)
+
+                if chunk_int > 0:
+                    db.execute(text("""
+                        INSERT INTO interest_ledger (
+                            loan_id, period_start, period_end,
+                            opening_balance, interest_accrued, closing_balance,
+                            calc_type, rate_applied
+                        ) VALUES (
+                            :lid, :start, :end,
+                            :open_bal, :interest, :close_bal,
+                            :calc, :rate
+                        )
+                    """), {
+                        "lid": str(loan_id),
+                        "start": curr,
+                        # Subtract 1 day from the end date for a clean visual ledger (e.g. Jan 1 - Jan 31)
+                        "end": chunk_end - timedelta(days=1),
+                        "open_bal": float(current_principal),
+                        "interest": float(chunk_int),
+                        "close_bal": float(current_principal),
+                        "calc": amortization_type,
+                        "rate": float(entered_rate)
+                    })
+                    unpaid_interest += chunk_int
+                    total_interest_accrued += chunk_int
+            curr = chunk_end
+    # ------------------------------------------
+
     if amortization_type in ('simple', 'compound', 'pro_rata'):
         for payment in payments:
             pay_date = payment["payment_date"]
             cash_paid = Decimal(str(payment["amount"]))
 
-            # Step A: Accrue interest to this date
-            days_elapsed = max(0, (pay_date - last_event_date).days)
-            new_interest = calculate_pro_rata_interest(principal_balance, entered_rate, days_elapsed, interest_period)
-
-            unpaid_interest += new_interest
-            total_interest_accrued += new_interest
+            # Step A: Accrue interest up to the payment date using the monthly chunker
+            log_monthly_chunks(last_event_date, pay_date, principal_balance)
 
             is_manual = payment.get("is_manual", False)
 
             if is_manual:
-                # <--- BANK MODE (Manual Overrides) --->
+                # BANK MODE (Manual Overrides)
                 manual_prin = Decimal(str(payment.get("principal_component") or 0))
                 manual_int  = Decimal(str(payment.get("interest_component") or 0))
-
                 principal_balance -= manual_prin
                 unpaid_interest -= manual_int
                 if unpaid_interest < 0:
                     unpaid_interest = Decimal('0')
-
                 total_paid += cash_paid
             else:
-                # <--- FRIEND MODE (Automatic Waterfall) --->
+                # FRIEND MODE (Automatic Waterfall)
                 cash_left = cash_paid
                 pay_tax_rate = Decimal(str(payment.get("tax_rate", 0) if payment.get("tax_rate") is not None else 0))
 
-                # 0. Pay off fees
                 if cash_left >= unpaid_fees:
                     cash_left -= unpaid_fees
                     unpaid_fees = Decimal('0')
@@ -77,7 +119,6 @@ def recalculate_loan_state(db: Session, loan_id: str):
                     unpaid_fees -= cash_left
                     cash_left = Decimal('0')
 
-                # 1. Pay off interest
                 interest_cleared = Decimal('0')
                 if cash_left >= unpaid_interest:
                     interest_cleared = unpaid_interest
@@ -89,28 +130,21 @@ def recalculate_loan_state(db: Session, loan_id: str):
                     cash_left = Decimal('0')
 
                 db.execute(text("UPDATE payments SET interest_component = :int_comp WHERE id = :pid"),
-                            {"int_comp": float(interest_cleared), "pid": str(payment["id"])})
+                           {"int_comp": float(interest_cleared), "pid": str(payment["id"])})
 
-                # <--- THE MAGIC FIX: Tax ONLY on the interest cleared! --->
                 tax_credit = interest_cleared * (pay_tax_rate / Decimal('100'))
-
-                # The tax credit acts as extra cash going towards the principal
                 cash_left += tax_credit
                 total_paid += (cash_paid + tax_credit)
 
-                # 2. Pay off principal
                 if cash_left > 0:
                     principal_balance -= cash_left
                     db.execute(text("UPDATE payments SET principal_component = :prin_comp WHERE id = :pid"),
-                                {"prin_comp": float(cash_left), "pid": str(payment["id"])})
+                               {"prin_comp": float(cash_left), "pid": str(payment["id"])})
 
             last_event_date = pay_date
 
-    # Step C: Accrue final interest to TODAY
-    days_to_today = max(0, (date.today() - last_event_date).days)
-    final_interest = calculate_pro_rata_interest(principal_balance, entered_rate, days_to_today, interest_period)
-    unpaid_interest += final_interest
-    total_interest_accrued += final_interest
+    # Step C: Accrue final interest to TODAY using the chunker
+    log_monthly_chunks(last_event_date, date.today(), principal_balance)
 
     balance_due = principal_balance + unpaid_interest + unpaid_fees
 
