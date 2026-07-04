@@ -141,14 +141,20 @@ def get_loan_audit(loan_id: UUID, db: Session = Depends(get_db)):
     logs = db.query(AuditLog).filter(
         AuditLog.loan_id == loan_id
     ).order_by(AuditLog.changed_at.desc()).all()
-    return [
-        {
+
+    clean_logs = []
+    for l in logs:
+        # THE FIX: Skip the automatic database ghost rows that have no details!
+        if (l.action == 'updated' or l.action == 'Updated') and not l.description:
+            continue
+
+        clean_logs.append({
             "action":        l.action,
             "changed_field": l.changed_field,
             "old_value":     l.old_value,
             "new_value":     l.new_value,
             "description":   l.description,
             "changed_at":    l.changed_at,
-        }
-        for l in logs
-    ]
+        })
+
+    return clean_logs
