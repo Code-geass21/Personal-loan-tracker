@@ -12,6 +12,10 @@ from app.services.interest_service import accrue_interest, recalculate_loan
 from app.services import attachment_service, payment_service
 from app.models.attachment import AttachmentParent
 from app.models.alert import Alert
+from fastapi.responses import StreamingResponse
+import io
+import openpyxl
+from fpdf import FPDF
 
 router = APIRouter()
 
@@ -158,3 +162,97 @@ def get_loan_audit(loan_id: UUID, db: Session = Depends(get_db)):
         })
 
     return clean_logs
+
+@router.get("/{loan_id}/statement/download")
+def download_statement(loan_id: UUID, format: str = "txt", db: Session = Depends(get_db)):
+    # 1. Fetch Loan & Payments
+    loan = loan_service.get_by_id(db, loan_id)
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+
+    payments = payment_service.get_by_loan(db, loan_id)
+
+    # 2. THE FIX: Log the export directly to the Audit Log!
+    from app.models.audit_log import AuditLog
+    audit_entry = AuditLog(
+        loan_id=loan_id,
+        action="Statement Exported",
+        description=f"User downloaded the loan statement in {format.upper()} format."
+    )
+    db.add(audit_entry)
+    db.commit()
+
+    # 3. Prepare the Data Rows
+    headers = ["Date", "Description", "Amount", "Principal Paid", "Interest Paid"]
+    rows = []
+    for p in payments:
+        rows.append([
+            str(p.payment_date),
+            "Payment Received",
+            f"${p.amount:.2f}",
+            f"${p.principal_component or 0:.2f}",
+            f"${p.interest_component or 0:.2f}"
+        ])
+
+    # 4. Generate the requested file type
+    if format == "xlsx":
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Loan Statement"
+        ws.append(headers)
+        for r in rows:
+            ws.append(r)
+
+        stream = io.BytesIO()
+        wb.save(stream)
+        stream.seek(0)
+        return StreamingResponse(
+            stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=loan_statement.xlsx"}
+        )
+
+    elif format == "pdf":
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(0, 10, txt="Loan Statement", ln=True, align='C')
+        pdf.ln(10)
+
+        # Draw Table Headers
+        pdf.set_font("Arial", 'B', 10)
+        col_widths = [30, 45, 30, 40, 40]
+        for i, header in enumerate(headers):
+            pdf.cell(col_widths[i], 10, str(header), border=1)
+        pdf.ln()
+
+        # Draw Table Rows
+        pdf.set_font("Arial", '', 10)
+        for r in rows:
+            for i, item in enumerate(r):
+                pdf.cell(col_widths[i], 10, str(item), border=1)
+            pdf.ln()
+
+        pdf_bytes = pdf.output(dest='S')
+        stream = io.BytesIO(pdf_bytes)
+        return StreamingResponse(
+            stream,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=loan_statement.pdf"}
+        )
+
+    else: # Default TXT
+        stream = io.StringIO()
+        stream.write("LOAN STATEMENT\n")
+        stream.write("-" * 65 + "\n")
+        stream.write(f"{' | '.join(headers)}\n")
+        stream.write("-" * 65 + "\n")
+        for r in rows:
+            stream.write(f"{' | '.join(r)}\n")
+
+        byte_stream = io.BytesIO(stream.getvalue().encode('utf-8'))
+        return StreamingResponse(
+            byte_stream,
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename=loan_statement.txt"}
+        )
