@@ -54,7 +54,21 @@ def update_loan(loan_id: UUID, data: LoanUpdate, db: Session = Depends(get_db)):
     result = loan_service.update(db, loan_id, data)
     if not result:
         raise HTTPException(status_code=404, detail="Loan not found")
-    # No more old recalculation here! loan_service handles it.
+
+    # --- THE FIX: Save the calculated diff into the Audit Log ---
+    diff_text = getattr(result, "_audit_diff", None)
+    if diff_text:
+        from app.models.audit_log import AuditLog
+
+        audit_entry = AuditLog(
+            loan_id=loan_id,
+            action="Updated Details",
+            description=diff_text
+        )
+        db.add(audit_entry)
+        db.commit()
+    # ------------------------------------------------------------
+
     return result
 
 @router.delete("/{loan_id}", status_code=204)
