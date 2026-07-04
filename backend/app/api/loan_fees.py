@@ -14,7 +14,24 @@ def get_fees_for_loan(loan_id: UUID, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=LoanFeeResponse)
 def create_fee(data: LoanFeeCreate, db: Session = Depends(get_db)):
-    return loan_fee_service.create(db, data)
+    fee = loan_fee_service.create(db, data)
+
+    # --- THE FIX: Write the Fee Receipt to the Audit Log ---
+    from app.models.audit_log import AuditLog
+
+    # Make the fee name look pretty (e.g. "pre_closure_fee" -> "Pre Closure Fee")
+    fee_type = getattr(fee, 'fee_type', 'Fee').replace('_', ' ').title()
+
+    audit_entry = AuditLog(
+        loan_id=fee.loan_id,
+        action="Fee Applied",
+        description=f"A {fee_type} of {fee.amount} was charged to the loan."
+    )
+    db.add(audit_entry)
+    db.commit()
+    # -------------------------------------------------------
+
+    return fee
 
 @router.patch("/{fee_id}", response_model=LoanFeeResponse)
 def update_fee(fee_id: UUID, data: LoanFeeUpdate, db: Session = Depends(get_db)):
