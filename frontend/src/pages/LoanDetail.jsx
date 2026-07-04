@@ -425,7 +425,6 @@ export default function LoanDetail() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div className="card-title" style={{ marginBottom: 0 }}>Documents & Attachments</div>
-            {/* Note: We use a <label> styled as a button so the hidden file input works securely */}
             <label className="btn btn-primary btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
               <Upload size={13} style={{ marginRight: 6 }} />
               {uploading ? 'Uploading...' : 'Upload File'}
@@ -448,11 +447,38 @@ export default function LoanDetail() {
                   {attachments.map(a => (
                     <tr key={a.id}>
                       <td style={{ fontWeight: 600 }}>{a.original_name || a.file_name || a.filename || 'Document'}</td>
-                      <td>{formatDate(a.created_at)}</td>
+
+                      {/* FIX 1: Native JavaScript Date for Exact Time + Seconds */}
+                      <td style={{ color: 'var(--text-secondary)' }}>
+                        {a.uploaded_at ? (() => {
+                          const d = new Date(a.uploaded_at);
+                          const pad = (n) => n.toString().padStart(2, '0');
+
+                          let hours = d.getHours();
+                          const ampm = hours >= 12 ? 'pm' : 'am';
+                          hours = hours % 12;
+                          hours = hours ? hours : 12; // the hour '0' should be '12'
+
+                          return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(hours)}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ampm}`;
+                        })() : '—'}
+                      </td>
+
                       <td>
-                        <button className="btn btn-danger btn-sm" onClick={() => removeAttachment(a.id)}>
-                          <Trash2 size={12} /> Delete
-                        </button>
+                        {/* FIX 2: Added a View button next to the Delete button */}
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <a
+                            href={`/api/attachments/${a.id}/download`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-secondary btn-sm"
+                            style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                          >
+                            👁 View
+                          </a>
+                          <button className="btn btn-danger btn-sm" onClick={() => removeAttachment(a.id)}>
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
