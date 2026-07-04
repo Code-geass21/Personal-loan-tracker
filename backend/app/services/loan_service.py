@@ -93,7 +93,17 @@ def cancel(db: Session, loan_id: UUID) -> Optional[Loan]:
     loan = get_by_id(db, loan_id)
     if not loan:
         return None
+
+    # 1. Change the status to cancelled
     loan.status = LoanStatus.cancelled
+
+    # 2. THE FIX: Wipe out the zombie debt!
+    loan.balance_due = 0
+    loan.total_interest = 0
+
+    # 3. Clear the math ledger so no ghost interest shows up on the UI
+    db.execute(text("DELETE FROM interest_ledger WHERE loan_id = :id"), {"id": str(loan_id)})
+
     db.commit()
     db.refresh(loan)
     return loan
