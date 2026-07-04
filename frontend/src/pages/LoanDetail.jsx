@@ -420,7 +420,111 @@ export default function LoanDetail() {
           )}
         </div>
       )}
+      {/* ---------------- NEW TABS START HERE ---------------- */}
+      {tab === 'attachments' && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>Documents & Attachments</div>
+            {/* Note: We use a <label> styled as a button so the hidden file input works securely */}
+            <label className="btn btn-primary btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
+              <Upload size={13} style={{ marginRight: 6 }} />
+              {uploading ? 'Uploading...' : 'Upload File'}
+              <input type="file" style={{ display: 'none' }} onChange={handleUpload} disabled={uploading} />
+            </label>
+          </div>
+          {attachments.length === 0 ? (
+            <div className="empty"><div className="empty-text">No documents uploaded yet</div></div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>File Name</th>
+                    <th>Uploaded On</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attachments.map(a => (
+                    <tr key={a.id}>
+                      <td style={{ fontWeight: 600 }}>{a.original_name || a.file_name || a.filename || 'Document'}</td>
+                      <td>{formatDate(a.created_at)}</td>
+                      <td>
+                        <button className="btn btn-danger btn-sm" onClick={() => removeAttachment(a.id)}>
+                          <Trash2 size={12} /> Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
+      {tab === 'interest' && (
+        <div className="card">
+          <div className="card-title">Interest Accrual Ledger</div>
+          {interest.length === 0 ? (
+            <div className="empty"><div className="empty-text">No interest accrued yet</div></div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Period</th>
+                    <th>Opening Balance</th>
+                    <th>Interest Accrued</th>
+                    <th>Closing Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {interest.map((row, idx) => (
+                    <tr key={idx}>
+                      <td>{formatDate(row.period_start)} to {formatDate(row.period_end)}</td>
+                      <td>{formatCurrency(row.opening_balance, loan.currency)}</td>
+                      <td style={{ color: '#ea580c', fontWeight: 600 }}>+ {formatCurrency(row.interest_accrued, loan.currency)}</td>
+                      <td style={{ fontWeight: 600 }}>{formatCurrency(row.closing_balance, loan.currency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'audit' && (
+        <div className="card">
+          <div className="card-title">Security & Audit Log</div>
+          {audit.length === 0 ? (
+            <div className="empty"><div className="empty-text">No audit history found</div></div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date & Time</th>
+                    <th>Action</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {audit.map((log, idx) => (
+                    <tr key={idx}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{formatDate(log.changed_at)}</td>
+                      <td><span className="badge badge-blue">{log.action}</span></td>
+                      <td>{log.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+      {/* ---------------- NEW TABS END HERE ---------------- */}
       {preCloseModal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setPreCloseModal(false)}>
           <div className="modal" style={{ maxWidth: 500 }}>
