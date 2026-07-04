@@ -57,13 +57,28 @@ def update(db: Session, loan_id: UUID, data: LoanUpdate):
     loan = get_by_id(db, loan_id)
     if not loan:
         return None
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(loan, field, value)
-    
+
+    # --- 1. Calculate the exact State Diff ---
+    changes = []
+    for field, new_val in data.model_dump(exclude_unset=True).items():
+        old_val = getattr(loan, field)
+
+        # Only log it if the value actually changed
+        if str(old_val) != str(new_val):
+            clean_name = field.replace('_', ' ').title()
+            changes.append(f"{clean_name}: {old_val} ➔ {new_val}")
+
+        setattr(loan, field, new_val)
+
     db.commit()
-    # Trigger the real-time engine!
+
+    # 2. Trigger the real-time engine!
     recalculate_loan_state(db, str(loan.id))
     db.refresh(loan)
+
+    # --- 3. Secretly attach the diff to the loan object for the API to read ---
+    loan._audit_diff = " | ".join(changes) if changes else None
+
     return loan
 
 def delete(db: Session, loan_id: UUID) -> bool:
