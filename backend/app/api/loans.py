@@ -46,10 +46,7 @@ def get_loan(loan_id: UUID, db: Session = Depends(get_db)):
 @router.post("/", response_model=LoanResponse, status_code=201)
 def create_loan(data: LoanCreate, db: Session = Depends(get_db)):
     loan = loan_service.create(db, data)
-    # Immediately accrue any past interest if loan is backdated
-    if loan.interest_rate and float(loan.interest_rate) > 0:
-        recalculate_loan(db, str(loan.id))
-        db.refresh(loan)
+    # loan_service automatically runs the new math engine, so we just return!
     return loan_service.get_summary_by_id(db, loan.id) or loan
 
 @router.patch("/{loan_id}", response_model=LoanResponse)
@@ -57,9 +54,7 @@ def update_loan(loan_id: UUID, data: LoanUpdate, db: Session = Depends(get_db)):
     result = loan_service.update(db, loan_id, data)
     if not result:
         raise HTTPException(status_code=404, detail="Loan not found")
-    # Always recalculate after any loan edit
-    recalculate_loan(db, str(result.id))
-    db.refresh(result)
+    # No more old recalculation here! loan_service handles it.
     return result
 
 @router.delete("/{loan_id}", status_code=204)
