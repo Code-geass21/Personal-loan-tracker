@@ -32,7 +32,9 @@ def recalculate_loan_state(db: Session, loan_id: str):
     principal_balance = Decimal(str(loan["principal"]))
     entered_rate = Decimal(str(loan["interest_rate"]))
     interest_period = loan["interest_period"]
-    amortization_type = loan.get("amortization_type", "simple") if "amortization_type" in loan else "simple"
+
+    # THE TYPO FIX: Changed from amortization_type to interest_type
+    interest_type = loan.get("interest_type", "simple") if "interest_type" in loan else "simple"
 
     total_interest_accrued = Decimal('0')
     total_paid = Decimal('0')
@@ -59,7 +61,12 @@ def recalculate_loan_state(db: Session, loan_id: str):
 
             days_in_chunk = (chunk_end - curr).days
             if days_in_chunk > 0:
-                chunk_int = calculate_pro_rata_interest(current_principal, entered_rate, days_in_chunk, interest_period)
+                # FIX #2: Dynamic Base Balance for Simple vs Compound!
+                base_for_interest = current_principal
+                if interest_type == 'compound':
+                    base_for_interest = current_principal + unpaid_interest
+
+                chunk_int = calculate_pro_rata_interest(base_for_interest, entered_rate, days_in_chunk, interest_period)
 
                 if chunk_int > 0:
                     db.execute(text("""
@@ -75,12 +82,11 @@ def recalculate_loan_state(db: Session, loan_id: str):
                     """), {
                         "lid": str(loan_id),
                         "start": curr,
-                        # Subtract 1 day from the end date for a clean visual ledger (e.g. Jan 1 - Jan 31)
                         "end": chunk_end - timedelta(days=1),
-                        "open_bal": float(current_principal),
+                        "open_bal": float(base_for_interest),
                         "interest": float(chunk_int),
-                        "close_bal": float(current_principal),
-                        "calc": amortization_type,
+                        "close_bal": float(base_for_interest + chunk_int),
+                        "calc": interest_type,
                         "rate": float(entered_rate)
                     })
                     unpaid_interest += chunk_int
@@ -88,7 +94,7 @@ def recalculate_loan_state(db: Session, loan_id: str):
             curr = chunk_end
     # ------------------------------------------
 
-    if amortization_type in ('simple', 'compound', 'pro_rata'):
+    if interest_type in ('simple', 'compound', 'pro_rata'):
         for payment in payments:
             pay_date = payment["payment_date"]
             cash_paid = Decimal(str(payment["amount"]))
@@ -129,17 +135,25 @@ def recalculate_loan_state(db: Session, loan_id: str):
                     unpaid_interest -= cash_left
                     cash_left = Decimal('0')
 
-                db.execute(text("UPDATE payments SET interest_component = :int_comp WHERE id = :pid"),
-                           {"int_comp": float(interest_cleared), "pid": str(payment["id"])})
-
                 tax_credit = interest_cleared * (pay_tax_rate / Decimal('100'))
                 cash_left += tax_credit
                 total_paid += (cash_paid + tax_credit)
 
-                if cash_left > 0:
-                    principal_balance -= cash_left
-                    db.execute(text("UPDATE payments SET principal_component = :prin_comp WHERE id = :pid"),
-                               {"prin_comp": float(cash_left), "pid": str(payment["id"])})
+                principal_cleared = cash_left if cash_left > 0 else Decimal('0')
+                if principal_cleared > 0:
+                    principal_balance -= principal_cleared
+
+                # Single combined UPDATE to keep records clean
+                db.execute(text("""
+                    UPDATE payments
+                    SET interest_component = :int_comp,
+                        principal_component = :prin_comp
+                    WHERE id = :pid
+                """), {
+                    "int_comp": float(interest_cleared),
+                    "prin_comp": float(principal_cleared),
+                    "pid": str(payment["id"])
+                })
 
             last_event_date = pay_date
 

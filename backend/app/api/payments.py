@@ -19,23 +19,8 @@ def get_payment(payment_id: UUID, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=PaymentResponse, status_code=201)
 def create_payment(data: PaymentCreate, db: Session = Depends(get_db)):
+    # Simply create the payment and let the Postgres Database Trigger handle the logging!
     payment = payment_service.create(db, data)
-
-    # --- THE FIX: Write the Payment Receipt to the Audit Log ---
-    from app.models.audit_log import AuditLog
-
-    # If the UI sent a note (like "Pre-Closure Settlement"), include it!
-    note = f" (Note: {payment.notes})" if getattr(payment, 'notes', None) else ""
-
-    audit_entry = AuditLog(
-        loan_id=payment.loan_id,
-        action="Payment Received",
-        description=f"A payment of {payment.amount} was recorded for {payment.payment_date}.{note}"
-    )
-    db.add(audit_entry)
-    db.commit()
-    # -----------------------------------------------------------
-
     return payment
 
 @router.patch("/{payment_id}", response_model=PaymentResponse)
