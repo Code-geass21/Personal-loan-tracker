@@ -4,7 +4,8 @@ from sqlalchemy import text
 from uuid import UUID
 from typing import List, Optional
 from datetime import date
-from app.models.loan import Loan, LoanStatus
+from app.models.loan import Loan, LoanStatus, DayCountMethod
+from app.models.person import Person, EntityType
 from app.schemas.loan import LoanCreate, LoanUpdate
 
 def get_all(
@@ -44,6 +45,18 @@ def get_summary_by_id(db: Session, loan_id: UUID) -> Optional[dict]:
 
 def create(db: Session, data: LoanCreate):
     loan_data = data.model_dump()
+
+    # --- THE SNAPSHOT FIX: Dynamic Math Assignment ---
+    # Fetch the person to see if they are a bank/institution
+    person = db.query(Person).filter(Person.id == loan_data["person_id"]).first()
+
+    # Automatically stamp Bank Math (30/360) if they are an institution!
+    if person and person.entity_type == EntityType.institution:
+        loan_data["day_count_method"] = DayCountMethod.bank_30_360
+    else:
+        loan_data["day_count_method"] = DayCountMethod.actual_365
+    # -------------------------------------------------
+
     loan = Loan(**loan_data)
     loan.balance_due = loan.principal
     db.add(loan)

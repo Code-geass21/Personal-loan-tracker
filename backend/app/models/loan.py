@@ -28,23 +28,31 @@ class InterestPeriod(str, enum.Enum):
     monthly = "monthly"
     yearly  = "yearly"
 
+# <--- NEW: IMMUTABLE DAY COUNT CONVENTION --->
+class DayCountMethod(str, enum.Enum):
+    actual_365 = "actual_365"
+    bank_30_360 = "bank_30_360"
+
 class Loan(Base):
     __tablename__ = "loans"
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     person_id       = Column(UUID(as_uuid=True), ForeignKey("persons.id"), nullable=False)
 
-    institution_type = Column(String(20), default="non_institutional")      # <--- NEW FIELD
-    direction       = Column(SAEnum(LoanDirection, name="loan_direction"),   nullable=False)
-    principal       = Column(Numeric(15, 2),         nullable=False)
-    currency        = Column(String(3),              nullable=False, default="INR")
+    institution_type = Column(String(20), default="non_institutional")
+    direction       = Column(SAEnum(LoanDirection, name="loan_direction"),  nullable=False)
+    principal       = Column(Numeric(15, 2),        nullable=False)
+    currency        = Column(String(3),             nullable=False, default="INR")
 
-    interest_rate   = Column(Numeric(8, 4),          nullable=False, default=0)
-    interest_type   = Column(SAEnum(InterestType, name="interest_type"),   nullable=False, default=InterestType.simple)
-    interest_period = Column(SAEnum(InterestPeriod, name="interest_period"),  nullable=False, default=InterestPeriod.monthly)
+    interest_rate   = Column(Numeric(8, 4),         nullable=False, default=0)
+    interest_type   = Column(SAEnum(InterestType, name="interest_type"),  nullable=False, default=InterestType.simple)
+    interest_period = Column(SAEnum(InterestPeriod, name="interest_period"), nullable=False, default=InterestPeriod.monthly)
+
+    # <--- NEW: THE LOAN MATH SNAPSHOT --->
+    day_count_method = Column(SAEnum(DayCountMethod, name="day_count_method"), nullable=False, default=DayCountMethod.actual_365)
 
     date_issued     = Column(Date, nullable=False, server_default=func.current_date())
-    emi_start_date  = Column(Date)                                          # <--- NEW FIELD
+    emi_start_date  = Column(Date)
     due_date        = Column(Date)
 
     status          = Column(SAEnum(LoanStatus, name="loan_status"), nullable=False, default=LoanStatus.active)
