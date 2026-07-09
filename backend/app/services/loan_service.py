@@ -5,7 +5,7 @@ from uuid import UUID
 from typing import List, Optional
 from datetime import date
 from decimal import Decimal                                     # <--- NEW IMPORT
-from app.utils.finance import calculate_emi                     # <--- NEW IMPORT
+from app.utils.finance import calculate_emi, smart_annualize_rate                     # <--- NEW IMPORT
 from app.models.loan import Loan, LoanStatus, DayCountMethod
 from app.models.person import Person, EntityType
 from app.schemas.loan import LoanCreate, LoanUpdate
@@ -57,16 +57,19 @@ def create(db: Session, data: LoanCreate):
         loan_data["day_count_method"] = DayCountMethod.bank_30_360
     else:
         loan_data["day_count_method"] = DayCountMethod.actual_365
-    # -------------------------------------------------
 
     # --- NEW: THE EMI EXPECTATION: Calculate and Freeze! ---
-    if loan_data.get("tenure_months") and loan_data.get("interest_rate"):
+    if loan_data.get("tenure_months") and loan_data.get("interest_rate") is not None:
         prin = Decimal(str(loan_data["principal"]))
-        rate = Decimal(str(loan_data["interest_rate"]))
+        raw_rate = Decimal(str(loan_data["interest_rate"]))
+        period = loan_data.get("interest_period", "monthly")
         months = int(loan_data["tenure_months"])
 
-        # Lock in the exact monthly payment and store it as a float to match schema
-        loan_data["emi_amount"] = float(calculate_emi(prin, rate, months))
+        # THE FIX: Run the raw rate through our smart annualizer first!
+        true_annual_rate = smart_annualize_rate(raw_rate, period)
+
+        # Lock in the exact monthly payment using the TRUE annual rate
+        loan_data["emi_amount"] = float(calculate_emi(prin, true_annual_rate, months))
     else:
         # Friends and family loans might not have a strict tenure!
         loan_data["emi_amount"] = None
