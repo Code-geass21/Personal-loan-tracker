@@ -4,6 +4,8 @@ from sqlalchemy import text
 from uuid import UUID
 from typing import List, Optional
 from datetime import date
+from decimal import Decimal                                     # <--- NEW IMPORT
+from app.utils.finance import calculate_emi                     # <--- NEW IMPORT
 from app.models.loan import Loan, LoanStatus, DayCountMethod
 from app.models.person import Person, EntityType
 from app.schemas.loan import LoanCreate, LoanUpdate
@@ -56,6 +58,19 @@ def create(db: Session, data: LoanCreate):
     else:
         loan_data["day_count_method"] = DayCountMethod.actual_365
     # -------------------------------------------------
+
+    # --- NEW: THE EMI EXPECTATION: Calculate and Freeze! ---
+    if loan_data.get("tenure_months") and loan_data.get("interest_rate"):
+        prin = Decimal(str(loan_data["principal"]))
+        rate = Decimal(str(loan_data["interest_rate"]))
+        months = int(loan_data["tenure_months"])
+
+        # Lock in the exact monthly payment and store it as a float to match schema
+        loan_data["emi_amount"] = float(calculate_emi(prin, rate, months))
+    else:
+        # Friends and family loans might not have a strict tenure!
+        loan_data["emi_amount"] = None
+    # -------------------------------------------------------
 
     loan = Loan(**loan_data)
     loan.balance_due = loan.principal

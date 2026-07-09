@@ -73,6 +73,7 @@ export default function LoanDetail() {
       principal: loan.principal, currency: loan.currency,
       interest_rate: loan.interest_rate, interest_type: loan.interest_type,
       interest_period: loan.interest_period, date_issued: loan.date_issued,
+      tenure_months: loan.tenure_months || '', // <--- ADD THIS
       emi_start_date: loan.emi_start_date || '', due_date: loan.due_date || '',
       purpose: loan.purpose || '', notes: loan.notes || '',
     })
@@ -84,6 +85,9 @@ export default function LoanDetail() {
     const payload = { ...editForm };
     payload.principal = parseFloat(payload.principal);
     payload.interest_rate = parseFloat(payload.interest_rate) || 0;
+    // <--- ADD THIS --->
+    if (payload.tenure_months) payload.tenure_months = parseInt(payload.tenure_months, 10);
+    else payload.tenure_months = null;
     if (payload.emi_start_date === '') payload.emi_start_date = null;
     if (payload.due_date === '') payload.due_date = null;
     if (payload.purpose === '') payload.purpose = null;
@@ -323,6 +327,10 @@ export default function LoanDetail() {
            ['Date Issued',  formatDate(loan.date_issued)],
            ['EMI Start',    loan.emi_start_date ? formatDate(loan.emi_start_date) : '—'],
            ['Due Date',     loan.due_date ? formatDate(loan.due_date) : 'Open-ended'],
+           // <--- ADD THESE TWO NEW DISPLAY BLOCKS --->
+           ['Tenure',       loan.tenure_months ? `${loan.tenure_months} Months` : 'Flexible'],
+           ['Fixed EMI',    loan.emi_amount ? formatCurrency(loan.emi_amount, loan.currency) : 'N/A'],
+           // ------------------------------------------
            ['Interest Rate',parseFloat(loan.interest_rate) > 0 ? `${loan.interest_rate}%` : 'None'],
            ['Period',       loan.interest_period],
            ['Total Interest Accrued',formatCurrency(loan.total_interest, loan.currency)],
@@ -809,6 +817,14 @@ export default function LoanDetail() {
                   <option value="yearly">Yearly</option>
                 </select>
               </div>
+              {/* --- NEW TENURE EDIT FIELD --- */}
+              <div className="form-group">
+                <label className="label">Tenure (in Months)</label>
+                <input className="input" type="number" min="1" step="1"
+                  value={editForm.tenure_months || ''}
+                  onChange={e => setEditForm({...editForm, tenure_months: e.target.value})} />
+              </div>
+              {/* ----------------------------- */}
               <div className="form-group">
                 <label className="label">Date Issued *</label>
                 <input className="input" type="date" value={editForm.date_issued}

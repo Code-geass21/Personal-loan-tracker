@@ -1,6 +1,6 @@
 import uuid
 import enum
-from sqlalchemy import Column, String, Numeric, Date, Text
+from sqlalchemy import Column, String, Numeric, Date, Text, Integer
 from sqlalchemy import Enum as SAEnum, TIMESTAMP, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -47,6 +47,10 @@ class Loan(Base):
     interest_rate   = Column(Numeric(8, 4),         nullable=False, default=0)
     interest_type   = Column(SAEnum(InterestType, name="interest_type"),  nullable=False, default=InterestType.simple)
     interest_period = Column(SAEnum(InterestPeriod, name="interest_period"), nullable=False, default=InterestPeriod.monthly)
+
+    # <--- NEW: THE EMI EXPECTATION --->
+    tenure_months   = Column(Integer, nullable=True)
+    emi_amount      = Column(Numeric(15, 2), nullable=True)
 
     # <--- NEW: THE LOAN MATH SNAPSHOT --->
     day_count_method = Column(SAEnum(DayCountMethod, name="day_count_method"), nullable=False, default=DayCountMethod.actual_365)

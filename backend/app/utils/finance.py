@@ -38,13 +38,33 @@ def calculate_days_between(start_date: date, end_date: date) -> int:
     """Returns the exact number of days between two dates."""
     return max(0, (end_date - start_date).days)
 
-def calculate_pro_rata_interest(principal: Decimal, entered_rate: Decimal, days: int, period: str = 'yearly') -> Decimal:
-    """Calculates exact daily interest using Smart Annualization (Actual/365 method)."""
+# <--- NEW: THE BANKING MATH ENGINE --->
+def get_30_360_days(start_date: date, end_date: date) -> int:
+    """
+    Returns days between two dates using the standard US 30/360 banking convention.
+    Ensures every full month generates exactly 30 days of interest.
+    """
+    d1, m1, y1 = start_date.day, start_date.month, start_date.year
+    d2, m2, y2 = end_date.day, end_date.month, end_date.year
+
+    # Apply 30/360 rules (If day is 31, treat it as 30)
+    if d1 == 31: d1 = 30
+    if d2 == 31 and d1 >= 30: d2 = 30
+
+    return 360 * (y2 - y1) + 30 * (m2 - m1) + (d2 - d1)
+
+# <--- UPDATED: ADDED THE use_360 TOGGLE --->
+def calculate_pro_rata_interest(principal: Decimal, entered_rate: Decimal, days: int, period: str = 'yearly', use_360: bool = False) -> Decimal:
+    """Calculates exact daily interest using Smart Annualization (Actual/365 or 30/360)."""
     if entered_rate == 0 or days == 0 or principal <= 0:
         return Decimal('0.00')
 
     annual_rate = smart_annualize_rate(entered_rate, period)
-    daily_rate = (annual_rate / Decimal('100')) / Decimal('365')
+
+    # Safely swap divisors based on the convention!
+    divisor = Decimal('360') if use_360 else Decimal('365')
+
+    daily_rate = (annual_rate / Decimal('100')) / divisor
     interest = principal * daily_rate * Decimal(str(days))
 
     return interest.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)

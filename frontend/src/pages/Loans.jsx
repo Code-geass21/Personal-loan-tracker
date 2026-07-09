@@ -16,6 +16,7 @@ const EMPTY_LOAN = {
   interest_rate: '0',
   interest_type: 'simple',
   interest_period: 'monthly',
+  tenure_months: '', // <--- ADD THIS LINE
   date_issued: new Date().toISOString().split('T')[0],
   emi_start_date: '',
   due_date: '',
@@ -63,6 +64,9 @@ export default function Loans() {
     const payload = { ...form };
     payload.principal = parseFloat(payload.principal);
     payload.interest_rate = parseFloat(payload.interest_rate) || 0;
+    // <--- ADD THESE TWO LINES --->
+    if (payload.tenure_months) payload.tenure_months = parseInt(payload.tenure_months, 10);
+    else delete payload.tenure_months;
     if (payload.emi_start_date === '') payload.emi_start_date = null;
     if (payload.due_date === '') payload.due_date = null;
     if (payload.purpose === '') payload.purpose = null;
@@ -326,6 +330,14 @@ export default function Loans() {
                   <option value="yearly">Yearly</option>
                 </select>
               </div>
+              {/* --- NEW TENURE INPUT --- */}
+              <div className="form-group">
+                <label className="label">Tenure (in Months)</label>
+                <input className="input" type="number" min="1" step="1"
+                  placeholder="e.g. 12" value={form.tenure_months}
+                  onChange={e => setForm({...form, tenure_months: e.target.value})} />
+              </div>
+              {/* ------------------------ */}
               <div className="form-group">
                 <label className="label">Date Issued *</label>
                 <input className="input" type="date" value={form.date_issued}

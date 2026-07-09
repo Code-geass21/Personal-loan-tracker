@@ -3,7 +3,7 @@ from sqlalchemy import text
 from decimal import Decimal
 from datetime import date, timedelta
 import calendar
-from app.utils.finance import calculate_pro_rata_interest, calculate_tax
+from app.utils.finance import calculate_pro_rata_interest, calculate_tax, get_30_360_days
 
 def _get_next_month_start(current_date: date) -> date:
     """Helper to find the 1st of the next month for exact date slicing."""
@@ -33,8 +33,11 @@ def recalculate_loan_state(db: Session, loan_id: str):
     entered_rate = Decimal(str(loan["interest_rate"]))
     interest_period = loan["interest_period"]
 
-    # THE TYPO FIX: Changed from amortization_type to interest_type
     interest_type = loan.get("interest_type", "simple") if "interest_type" in loan else "simple"
+
+    # --- THE MISSING LINK: Read the Immutable Snapshot from the Database ---
+    day_count_method = loan.get("day_count_method", "actual_365")
+    # -----------------------------------------------------------------------
 
     total_interest_accrued = Decimal('0')
     total_paid = Decimal('0')
@@ -50,7 +53,7 @@ def recalculate_loan_state(db: Session, loan_id: str):
 
     last_event_date = loan["date_issued"]
 
-    # --- THE MAGIC FIX: The Monthly Chunker ---
+    # --- THE MAGIC FIX: Dynamic Monthly Chunker ---
     def log_monthly_chunks(start_d: date, end_d: date, current_principal: Decimal):
         nonlocal total_interest_accrued, unpaid_interest
 
@@ -59,14 +62,27 @@ def recalculate_loan_state(db: Session, loan_id: str):
             next_m = _get_next_month_start(curr)
             chunk_end = min(next_m, end_d)
 
-            days_in_chunk = (chunk_end - curr).days
+            # DYNAMIC MATH: Check the snapshot to decide how to count days!
+            if day_count_method == "bank_30_360":
+                days_in_chunk = get_30_360_days(curr, chunk_end)
+                use_360 = True
+            else:
+                days_in_chunk = (chunk_end - curr).days  # Exact Calendar Days
+                use_360 = False
+
             if days_in_chunk > 0:
-                # FIX #2: Dynamic Base Balance for Simple vs Compound!
                 base_for_interest = current_principal
                 if interest_type == 'compound':
                     base_for_interest = current_principal + unpaid_interest
 
-                chunk_int = calculate_pro_rata_interest(base_for_interest, entered_rate, days_in_chunk, interest_period)
+                # Pass the dynamic flag into the calculator
+                chunk_int = calculate_pro_rata_interest(
+                    principal=base_for_interest,
+                    entered_rate=entered_rate,
+                    days=days_in_chunk,
+                    period=interest_period,
+                    use_360=use_360
+                )
 
                 if chunk_int > 0:
                     db.execute(text("""
