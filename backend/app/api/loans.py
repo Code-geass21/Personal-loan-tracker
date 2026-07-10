@@ -165,14 +165,14 @@ def get_loan_audit(loan_id: UUID, db: Session = Depends(get_db)):
 
 @router.get("/{loan_id}/statement/download")
 def download_statement(loan_id: UUID, format: str = "txt", db: Session = Depends(get_db)):
-    # 1. Fetch Loan & Payments
-    loan = loan_service.get_by_id(db, loan_id)
+    # 1. Fetch Enriched Loan Summary & Payments
+    loan = loan_service.get_summary_by_id(db, loan_id)
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
 
     payments = payment_service.get_by_loan(db, loan_id)
 
-    # 2. THE FIX: Log the export directly to the Audit Log!
+    # 2. Log the export directly to the Audit Log!
     from app.models.audit_log import AuditLog
     audit_entry = AuditLog(
         loan_id=loan_id,
@@ -182,23 +182,56 @@ def download_statement(loan_id: UUID, format: str = "txt", db: Session = Depends
     db.add(audit_entry)
     db.commit()
 
-    # 3. Prepare the Data Rows
+    # --- NEW: 3. Prepare the Enriched Loan Summary Header ---
+    currency = loan.get("currency", "USD")
+    rate = loan.get("interest_rate", 0)
+    period = loan.get("interest_period", "monthly")
+    rate_str = f"{rate}% ({period})" if rate and float(rate) > 0 else "0%"
+
+    direction = loan.get("direction", "lent")
+    party_role = "Borrower" if direction == "lent" else "Lender"
+    direction_text = "Money Lent (They owe me)" if direction == "lent" else "Money Borrowed (I owe them)"
+
+    summary_data = [
+        ["Loan ID:", str(loan.get("id", loan_id))],
+        [f"Party ({party_role}):", str(loan.get("person_name", "Unknown"))],
+        ["Direction:", direction_text],
+        ["Date Issued:", str(loan.get("date_issued", "N/A"))],
+        ["Purpose:", str(loan.get("purpose") or "N/A")],
+        ["Original Principal:", f"{currency} {float(loan.get('principal', 0)):.2f}"],
+        ["Interest Rate:", rate_str],
+        ["Total Paid to Date:", f"{currency} {float(loan.get('total_paid', 0)):.2f}"],
+        ["Current Balance Due:", f"{currency} {float(loan.get('balance_due', 0)):.2f}"],
+        ["Status:", str(loan.get("status", "unknown")).upper()]
+    ]
+    # --------------------------------------------------------
+
+    # 4. Prepare the Payment Data Rows
     headers = ["Date", "Description", "Amount", "Principal Paid", "Interest Paid"]
     rows = []
     for p in payments:
         rows.append([
             str(p.payment_date),
             "Payment Received",
-            f"${p.amount:.2f}",
-            f"${p.principal_component or 0:.2f}",
-            f"${p.interest_component or 0:.2f}"
+            f"{currency} {p.amount:.2f}",
+            f"{currency} {p.principal_component or 0:.2f}",
+            f"{currency} {p.interest_component or 0:.2f}"
         ])
 
-    # 4. Generate the requested file type
+    # 5. Generate the requested file type
     if format == "xlsx":
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Loan Statement"
+
+        # Write Summary Header
+        ws.append(["OFFICIAL LOAN STATEMENT"])
+        ws.append([]) # Empty row
+        for item in summary_data:
+            ws.append(item)
+
+        ws.append([]) # Empty row
+        ws.append(["--- TRANSACTION HISTORY ---"])
         ws.append(headers)
         for r in rows:
             ws.append(r)
@@ -215,13 +248,26 @@ def download_statement(loan_id: UUID, format: str = "txt", db: Session = Depends
     elif format == "pdf":
         pdf = FPDF()
         pdf.add_page()
+
+        # Write Summary Header
         pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, txt="Loan Statement", ln=True, align='C')
+        pdf.cell(0, 10, txt="OFFICIAL LOAN STATEMENT", ln=True, align='C')
+        pdf.ln(5)
+
+        pdf.set_font("Arial", '', 11)
+        for label, val in summary_data:
+            pdf.set_font("Arial", 'B', 11)
+            pdf.cell(45, 8, txt=label)
+            pdf.set_font("Arial", '', 11)
+            pdf.cell(0, 8, txt=val, ln=True)
+
         pdf.ln(10)
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(0, 10, txt="--- TRANSACTION HISTORY ---", ln=True)
 
         # Draw Table Headers
         pdf.set_font("Arial", 'B', 10)
-        col_widths = [30, 45, 30, 40, 40]
+        col_widths = [25, 45, 30, 40, 40]
         for i, header in enumerate(headers):
             pdf.cell(col_widths[i], 10, str(header), border=1)
         pdf.ln()
@@ -243,10 +289,16 @@ def download_statement(loan_id: UUID, format: str = "txt", db: Session = Depends
 
     else: # Default TXT
         stream = io.StringIO()
-        stream.write("LOAN STATEMENT\n")
-        stream.write("-" * 65 + "\n")
+        stream.write("=========================================\n")
+        stream.write("        OFFICIAL LOAN STATEMENT          \n")
+        stream.write("=========================================\n\n")
+
+        for label, val in summary_data:
+            stream.write(f"{label:<25} {val}\n")
+
+        stream.write("\n-----------------------------------------------------------------\n")
         stream.write(f"{' | '.join(headers)}\n")
-        stream.write("-" * 65 + "\n")
+        stream.write("-----------------------------------------------------------------\n")
         for r in rows:
             stream.write(f"{' | '.join(r)}\n")
 
