@@ -192,6 +192,19 @@ def download_statement(loan_id: UUID, format: str = "txt", db: Session = Depends
     party_role = "Borrower" if direction == "lent" else "Lender"
     direction_text = "Money Lent (They owe me)" if direction == "lent" else "Money Borrowed (I owe them)"
 
+    # --- NEW: Calculate exact totals for the export ---
+    total_principal_paid = sum((p.principal_component or 0) for p in payments)
+    total_interest_paid = sum((p.interest_component or 0) for p in payments)
+    total_tax_paid = 0
+    for p in payments:
+        if p.is_manual:
+            total_tax_paid += (p.tax_amount or 0)
+        else:
+            p_rate = p.tax_rate or 0
+            if p_rate > 0:
+                total_tax_paid += (p.amount * (p_rate / 100))
+    # --------------------------------------------------
+
     summary_data = [
         ["Loan ID:", str(loan.get("id", loan_id))],
         [f"Party ({party_role}):", str(loan.get("person_name", "Unknown"))],
@@ -200,7 +213,14 @@ def download_statement(loan_id: UUID, format: str = "txt", db: Session = Depends
         ["Purpose:", str(loan.get("purpose") or "N/A")],
         ["Original Principal:", f"{currency} {float(loan.get('principal', 0)):.2f}"],
         ["Interest Rate:", rate_str],
-        ["Total Paid to Date:", f"{currency} {float(loan.get('total_paid', 0)):.2f}"],
+
+        # --- NEW: Inject into the statement header ---
+        ["Total Principal Paid:", f"{currency} {total_principal_paid:.2f}"],
+        ["Total Interest Paid:", f"{currency} {total_interest_paid:.2f}"],
+        ["Total Tax/GST Paid:", f"{currency} {total_tax_paid:.2f}"],
+        # ---------------------------------------------
+
+        ["Total Cash Paid to Date:", f"{currency} {float(loan.get('total_paid', 0)):.2f}"],
         ["Current Balance Due:", f"{currency} {float(loan.get('balance_due', 0)):.2f}"],
         ["Status:", str(loan.get("status", "unknown")).upper()]
     ]

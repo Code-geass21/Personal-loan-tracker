@@ -262,6 +262,24 @@ export default function LoanDetail() {
   const total  = parseFloat(loan.principal) + parseFloat(loan.total_interest)
   const pct    = total > 0 ? Math.min(100, (paid / total) * 100) : 0
 
+  // --- NEW: Calculate exact totals from payment history for the UI ---
+  let totalPrincipalPaid = 0;
+  let totalInterestPaid = 0;
+  let totalTaxPaid = 0;
+
+  payments.forEach(p => {
+    totalPrincipalPaid += parseFloat(p.principal_component || 0);
+    totalInterestPaid += parseFloat(p.interest_component || 0);
+    if (p.is_manual) {
+      totalTaxPaid += parseFloat(p.tax_amount || 0);
+    } else if (parseFloat(p.tax_rate || 0) > 0) {
+      totalTaxPaid += parseFloat(p.amount) * (parseFloat(p.tax_rate) / 100);
+    }
+  });
+
+  const principalProgress = loan.principal > 0 ? Math.min(100, (totalPrincipalPaid / loan.principal) * 100) : 0;
+  // -------------------------------------------------------------------
+
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
@@ -288,6 +306,17 @@ export default function LoanDetail() {
               </Link>
               {loan.person_nickname && ` (${loan.person_nickname})`}
             </div>
+            {/* --- NEW: Visual Principal Progress Bar --- */}
+            <div style={{ marginTop: 22, width: '100%', maxWidth: 400 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6, fontWeight: 600 }}>
+                <span style={{ color: '#2563eb' }}>Principal Paid: {formatCurrency(totalPrincipalPaid, loan.currency)}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>Original: {formatCurrency(loan.principal, loan.currency)}</span>
+              </div>
+              <div style={{ width: '100%', height: 8, background: 'var(--bg-tertiary)', borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                <div style={{ width: `${principalProgress}%`, height: '100%', background: '#2563eb', transition: 'width 0.5s ease-out' }} />
+              </div>
+            </div>
+            {/* ---------------------------------------- */}
           </div>
 
           {/* ACTION BUTTONS GROUP */}
@@ -336,6 +365,9 @@ export default function LoanDetail() {
            ['Total Interest Accrued',formatCurrency(loan.total_interest, loan.currency)],
            ['Total Paid',   formatCurrency(loan.total_paid, loan.currency)],
            ['Balance Due',  formatCurrency(loan.balance_due, loan.currency)],
+          // 👇 PASTE THESE TWO LINES RIGHT HERE 👇
+           ['Total Interest Paid', formatCurrency(totalInterestPaid, loan.currency)],
+           ['Total Tax / GST Paid', formatCurrency(totalTaxPaid, loan.currency)],
          ].map(([label, value]) => (
             <div key={label} style={{ background: 'var(--bg-tertiary)', borderRadius: 8, padding: '10px 12px' }}>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</div>
