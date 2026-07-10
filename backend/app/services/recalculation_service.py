@@ -174,7 +174,13 @@ def recalculate_loan_state(db: Session, loan_id: str):
             last_event_date = pay_date
 
     # Step C: Accrue final interest to TODAY using the chunker
-    log_monthly_chunks(last_event_date, date.today(), principal_balance)
+    # --- THE ZOMBIE INTEREST FIX ---
+    # If the loan is already closed, the clock stops at the last payment date!
+    is_closed = loan["status"] in ('settled', 'cancelled')
+    target_date = last_event_date if is_closed else date.today()
+
+    # Step C: Accrue final interest to the target date
+    log_monthly_chunks(last_event_date, target_date, principal_balance)
 
     balance_due = principal_balance + unpaid_interest + unpaid_fees
 
@@ -185,8 +191,10 @@ def recalculate_loan_state(db: Session, loan_id: str):
     elif total_paid > 0:
         new_status = 'partial'
 
-    if loan["status"] in ('cancelled',):
+    # Respect the admin's manual override! (Debt Forgiveness)
+    if is_closed:
         new_status = loan["status"]
+        balance_due = Decimal('0')  # Wipe out the ghost balance
 
     db.execute(text("""
         UPDATE loans
