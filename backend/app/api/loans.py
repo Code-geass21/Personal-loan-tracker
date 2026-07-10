@@ -192,10 +192,17 @@ def download_statement(loan_id: UUID, format: str = "txt", db: Session = Depends
     party_role = "Borrower" if direction == "lent" else "Lender"
     direction_text = "Money Lent (They owe me)" if direction == "lent" else "Money Borrowed (I owe them)"
 
+    # --- NEW FIX: Fetch fees to include their GST in the totals ---
+    from app.services import loan_fee_service
+    fees = loan_fee_service.get_by_loan(db, loan_id)
+    # --------------------------------------------------------------
+
     # --- NEW: Calculate exact totals for the export ---
     total_principal_paid = sum((p.principal_component or 0) for p in payments)
     total_interest_paid = sum((p.interest_component or 0) for p in payments)
     total_tax_paid = 0
+
+    # 1.Tax from payments
     for p in payments:
         if p.is_manual:
             total_tax_paid += (p.tax_amount or 0)
@@ -203,6 +210,12 @@ def download_statement(loan_id: UUID, format: str = "txt", db: Session = Depends
             p_rate = p.tax_rate or 0
             if p_rate > 0:
                 total_tax_paid += (p.amount * (p_rate / 100))
+    # --------------------------------------------------
+    # 2. Tax from fees (The Bug Fix!)
+    for f in fees:
+        f_rate = f.tax_rate or 0
+        if f_rate > 0:
+            total_tax_paid += (f.amount * (f_rate / 100))
     # --------------------------------------------------
 
     summary_data = [

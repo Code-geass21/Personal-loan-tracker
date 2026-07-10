@@ -276,6 +276,13 @@ export default function LoanDetail() {
       totalTaxPaid += parseFloat(p.amount) * (parseFloat(p.tax_rate) / 100);
     }
   });
+  // --- NEW FIX: Include GST from Upfront Fees & Penalties! ---
+  fees.forEach(f => {
+    if (parseFloat(f.tax_rate || 0) > 0) {
+      totalTaxPaid += parseFloat(f.amount) * (parseFloat(f.tax_rate) / 100);
+    }
+  });
+  // ------------------------------------------------------------
 
   const principalProgress = loan.principal > 0 ? Math.min(100, (totalPrincipalPaid / loan.principal) * 100) : 0;
   // -------------------------------------------------------------------
