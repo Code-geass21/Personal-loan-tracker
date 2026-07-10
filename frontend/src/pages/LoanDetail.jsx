@@ -391,12 +391,114 @@ export default function LoanDetail() {
           ['attachments', `Attachments (${attachments.length})`],
           ['interest',    `Interest Ledger (${interest.length})`],
           ['audit',       `Audit Log (${audit.length})`],
+          // --- NEW: Add the EMI Tab ---
+          ['emi',         `EMI Schedule`],
+          // ----------------------------
         ].map(([key, label]) => (
           <div key={key} className={`tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
             {label}
           </div>
         ))}
       </div>
+
+      {/* --- NEW: EMI Schedule Tab Content --- */}
+      {tab === 'emi' && (
+        <div className="card">
+          <div className="card-title">Projected EMI Schedule</div>
+          {(!loan.emi_amount || !loan.tenure_months) ? (
+            <div className="empty"><div className="empty-text">This loan does not have a fixed EMI amount or tenure set. Update the loan details to generate a schedule.</div></div>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Installment</th>
+                    <th>Date</th>
+                    <th>Total Expected</th>
+                    <th>→ Interest</th>
+                    <th>→ Fees / GST</th>
+                    <th>→ Principal</th>
+                    <th>Remaining Principal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const schedule = [];
+                    // 1. Calculate total upfront fees + GST
+                    let totalUpfront = 0;
+                    fees.forEach(f => {
+                      totalUpfront += parseFloat(f.amount) + (parseFloat(f.amount) * (parseFloat(f.tax_rate) || 0) / 100);
+                    });
+
+                    // 2. Setup variables for amortization
+                    const startDate = new Date(loan.emi_start_date || loan.date_issued);
+                    const emiBase = parseFloat(loan.emi_amount) || 0;
+                    const isSimple = loan.interest_type === 'simple';
+                    const annualRate = parseFloat(loan.interest_rate) || 0;
+                    let remainingPrincipal = parseFloat(loan.principal) || 0;
+
+                    // Pre-calculate flat interest for simple interest loans
+                    const flatInterest = isSimple && loan.tenure_months ? (remainingPrincipal * (annualRate/100) * (loan.tenure_months/12)) / loan.tenure_months : 0;
+
+                    // 3. Loop through tenure and build rows
+                    for (let i = 1; i <= loan.tenure_months; i++) {
+                      const d = new Date(startDate);
+                      d.setMonth(d.getMonth() + (i - 1)); // Increment month
+
+                      const feesIncluded = i === 1 ? totalUpfront : 0; // Fees only on month 1
+                      const totalExpected = emiBase + feesIncluded;
+
+                      let intComp = 0;
+                      let princComp = 0;
+
+                      if (isSimple) {
+                        intComp = flatInterest;
+                        princComp = emiBase - intComp;
+                      } else {
+                        // Standard compound amortization (Interest = Remaining * Monthly Rate)
+                        intComp = remainingPrincipal * (annualRate / 12 / 100);
+                        princComp = emiBase - intComp;
+                      }
+
+                      // Adjust for final month rounding differences
+                      if (i === loan.tenure_months || princComp > remainingPrincipal) {
+                        princComp = remainingPrincipal;
+                      }
+
+                      remainingPrincipal -= princComp;
+                      if (remainingPrincipal < 0) remainingPrincipal = 0;
+
+                      schedule.push(
+                        <tr key={i}>
+                          <td style={{ fontWeight: 600 }}>#{i}</td>
+                          <td>{formatDate(d.toISOString().split('T')[0])}</td>
+                          <td style={{ fontWeight: 700, color: '#16a34a', fontSize: '14px' }}>
+                            {formatCurrency(totalExpected, loan.currency)}
+                          </td>
+                          <td style={{ color: '#ea580c' }}>
+                            {formatCurrency(intComp, loan.currency)}
+                          </td>
+                          <td style={{ color: feesIncluded > 0 ? '#dc2626' : 'var(--text-tertiary)' }}>
+                            {feesIncluded > 0 ? `+ ${formatCurrency(feesIncluded, loan.currency)}` : '—'}
+                          </td>
+                          <td style={{ color: '#2563eb' }}>
+                            {formatCurrency(princComp, loan.currency)}
+                          </td>
+                          <td style={{ fontWeight: 600 }}>
+                            {formatCurrency(remainingPrincipal, loan.currency)}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return schedule;
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+      {/* --------------------------------------- */}
 
       {tab === 'fees' && (
         <div className="card">
