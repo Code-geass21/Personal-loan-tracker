@@ -7,7 +7,7 @@ import {
   createPayment, deletePayment, uploadAttachment,
   deleteAttachment, deleteLoan, cancelLoan,
   getLoanTarget, createTarget, updateLoan,
-  getLoanFees, createLoanFee, deleteLoanFee
+  getLoanFees, createLoanFee, deleteLoanFee, dismissAlert
 } from '../utils/api'
 import { formatCurrency, formatDate, formatDateTime, statusColor, directionColor } from '../utils/format'
 import { ArrowLeft, Plus, Trash2, Upload, XCircle, AlertTriangle } from 'lucide-react'
@@ -50,6 +50,18 @@ export default function LoanDetail() {
   const [preCloseForm, setPreCloseForm]   = useState({
     penalty: '', tax_rate: '', method: 'bank_transfer', date: new Date().toISOString().split('T')[0]
   })
+
+  // --- NEW: Alert Dismissal Logic ---
+  const handleDismissAlert = async (alertId) => {
+    try {
+      await dismissAlert(alertId);
+      setAlerts(alerts.filter(a => a.id !== alertId)); // Instantly remove from screen
+      toast.success('Alert dismissed');
+    } catch (e) {
+      toast.error('Failed to dismiss alert');
+    }
+  }
+  // ----------------------------------
 
   const load = () => {
     setLoading(true)
@@ -289,6 +301,27 @@ export default function LoanDetail() {
 
   return (
     <div>
+      {/* --- NEW: Active Alerts Banner --- */}
+      {alerts.length > 0 && (
+        <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {alerts.map(alert => (
+            <div key={alert.id} style={{
+              background: '#fef2f2', border: '1px solid #fca5a5', color: '#991b1b',
+              padding: '12px 16px', borderRadius: 8, display: 'flex',
+              justifyContent: 'space-between', alignItems: 'center'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertTriangle size={16} />
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{alert.message || alert.description}</span>
+              </div>
+              <button onClick={() => handleDismissAlert(alert.id)} style={{ background: 'transparent', border: 'none', color: '#991b1b', cursor: 'pointer', padding: 4 }}>
+                <XCircle size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* --------------------------------- */}
       <div style={{ marginBottom: 20 }}>
         <Link to="/loans" style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-link)', fontSize: 13 }}>
           <ArrowLeft size={14} /> Back to Loans
