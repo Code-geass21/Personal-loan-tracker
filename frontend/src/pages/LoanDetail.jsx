@@ -73,6 +73,10 @@ export default function LoanDetail() {
       setLoan(l.data); setPayments(p.data); setAttachments(a.data);
       setInterest(i.data); setAudit(au.data); setAlerts(al.data);
       setLoanTarget(tg.data); setFees(f.data);
+
+      console.log("ALERTS FROM BACKEND:", al.data); // <--- ADD THIS ONE LINE
+
+
     }).catch(() => toast.error('Failed to load loan'))
     .finally(() => setLoading(false))
   }
