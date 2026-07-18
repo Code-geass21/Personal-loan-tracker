@@ -593,8 +593,8 @@ export default function LoanDetail() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div className="card-title" style={{ marginBottom: 0 }}>Payment History & Breakdown</div>
             <button className="btn btn-primary btn-sm" onClick={() => {
-                setFeeForm({ ...EMPTY_FEE, created_at: loan.date_issued });
-                setFeeModal(true);
+                setPayForm({...EMPTY_PAYMENT, amount: loan.balance_due});
+                setPayModal(true);
               }}>
                 <Plus size={13} /> Add Payment
               </button>
