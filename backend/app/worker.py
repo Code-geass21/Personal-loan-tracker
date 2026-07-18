@@ -31,8 +31,11 @@ def generate_alerts(db: Session):
     ).all()
 
     for loan in active_loans:
+        # THE FIX: A dictionary ensures we NEVER have duplicate alert types for one loan!
+        pending_alerts = {}
+
         # --- DYNAMIC EMI ALERTS ---
-        if getattr(loan, 'emi_start_date', None) and getattr(loan, 'tenure_months', None):
+        if getattr(loan, 'emi_start_date', None) and getattr(loan, 'tenure_months', None) and getattr(loan, 'emi_amount', None):
             past_emis = []
             future_emis = []
 
@@ -44,62 +47,48 @@ def generate_alerts(db: Session):
                     future_emis.append(emi_date)
 
             # Most Recent Missed EMI Alert (The Arrears Check)
-            if past_emis and getattr(loan, 'emi_amount', None):
-                last_scheduled_date = past_emis[-1]
-                days_late = (today - last_scheduled_date).days
-
-                # 1. Calculate how much they SHOULD have paid by now
+            if past_emis:
                 expected_total_paid = loan.emi_amount * len(past_emis)
-
-                # 2. Check if they are actually behind on their payments!
                 if loan.total_paid < expected_total_paid:
                     amount_behind = expected_total_paid - loan.total_paid
                     emis_missed = round(float(amount_behind / loan.emi_amount), 1)
+                    days_late = (today - past_emis[-1]).days
 
-                    # 3. UPSERT LOGIC: Search for ANY active overdue alert
-                    existing_overdue = db.query(Alert).filter_by(
-                        loan_id=loan.id,
-                        alert_type=AlertType.overdue,
-                        is_dismissed=False
-                    ).first()
-
-                    new_message = f"Account in Arrears! ~{emis_missed} EMIs behind ({amount_behind:.2f} {loan.currency}). Most recent schedule is {days_late} days late."
-
-                    if existing_overdue:
-                        # Update the existing alert instead of making duplicates
-                        existing_overdue.message = new_message
-                        existing_overdue.trigger_date = today
-                    else:
-                        # Create a new one if it doesn't exist
-                        db.add(Alert(loan_id=loan.id, alert_type=AlertType.overdue, trigger_date=today, message=new_message))
+                    pending_alerts[AlertType.overdue] = f"Account in Arrears! ~{emis_missed} EMIs behind ({amount_behind:.2f} {loan.currency}). Most recent schedule is {days_late} days late."
 
             # Next Upcoming EMI Alert
             if future_emis:
                 next_emi = future_emis[0]
                 days_until = (next_emi - today).days
                 if days_until <= settings.ALERT_LEAD_DAYS:
-                    existing_soon = db.query(Alert).filter_by(loan_id=loan.id, alert_type=AlertType.due_soon, trigger_date=today).first()
-                    if not existing_soon:
-                        db.add(Alert(loan_id=loan.id, alert_type=AlertType.due_soon, trigger_date=today, message=f"Upcoming EMI due on {next_emi.strftime('%b %d, %Y')} (in {days_until} days)"))
-        # --------------------------
+                    pending_alerts[AlertType.due_soon] = f"Upcoming EMI due on {next_emi.strftime('%b %d, %Y')} (in {days_until} days)"
 
         # --- FINAL DUE DATE ALERTS ---
         if loan.due_date:
-            if loan.due_date == due_soon_date:
-                existing = db.query(Alert).filter_by(loan_id=loan.id, alert_type=AlertType.due_soon, trigger_date=today).first()
-                if not existing:
-                    db.add(Alert(loan_id=loan.id, alert_type=AlertType.due_soon, trigger_date=today, message=f"Final loan payoff due in {settings.ALERT_LEAD_DAYS} days ({loan.due_date.strftime('%b %d, %Y')})"))
-            elif loan.due_date < today:
-                existing = db.query(Alert).filter_by(loan_id=loan.id, alert_type=AlertType.overdue, trigger_date=today).first()
-                if not existing:
-                    db.add(Alert(loan_id=loan.id, alert_type=AlertType.overdue, trigger_date=today, message=f"Loan is overdue by {(today - loan.due_date).days} days"))
-        # -----------------------------
+            if loan.due_date == due_soon_date and AlertType.due_soon not in pending_alerts:
+                pending_alerts[AlertType.due_soon] = f"Final loan payoff due in {settings.ALERT_LEAD_DAYS} days ({loan.due_date.strftime('%b %d, %Y')})"
+            elif loan.due_date < today and AlertType.overdue not in pending_alerts:
+                pending_alerts[AlertType.overdue] = f"Loan is overdue by {(today - loan.due_date).days} days"
 
         # --- PARTIAL PAYMENT REMINDER ---
         if loan.status == LoanStatus.partial:
-            existing = db.query(Alert).filter_by(loan_id=loan.id, alert_type=AlertType.partial_reminder, trigger_date=today).first()
-            if not existing:
-                db.add(Alert(loan_id=loan.id, alert_type=AlertType.partial_reminder, trigger_date=today, message=f"Partial payment made — balance remaining: {loan.balance_due} {loan.currency}"))
+            pending_alerts[AlertType.partial_reminder] = f"Partial payment made — balance remaining: {loan.balance_due} {loan.currency}"
+
+        # --- APPLY SAFE UPSERTS TO DATABASE ---
+        for a_type, msg in pending_alerts.items():
+            # 1. Update existing active alerts
+            existing_active = db.query(Alert).filter_by(loan_id=loan.id, alert_type=a_type, is_dismissed=False).first()
+            if existing_active:
+                existing_active.message = msg
+                existing_active.trigger_date = today
+            else:
+                # 2. Prevent DB crash if an alert was already dismissed today
+                existing_today = db.query(Alert).filter_by(loan_id=loan.id, alert_type=a_type, trigger_date=today).first()
+                if existing_today:
+                    existing_today.message = msg
+                    existing_today.is_dismissed = False  # Reactivate it!
+                else:
+                    db.add(Alert(loan_id=loan.id, alert_type=a_type, trigger_date=today, message=msg))
 
     # --- SETTLED / FORECLOSED LOANS ---
     closed_loans = db.query(Loan).filter(
@@ -108,14 +97,22 @@ def generate_alerts(db: Session):
 
     for loan in closed_loans:
         status_str = loan.status.value.upper() if hasattr(loan.status, 'value') else str(loan.status).upper()
-        existing = db.query(Alert).filter_by(loan_id=loan.id, alert_type=AlertType.partial_reminder, trigger_date=today).first()
-        if not existing:
-            db.add(Alert(loan_id=loan.id, alert_type=AlertType.partial_reminder, trigger_date=today, message=f"LOAN {status_str}: Balance cleared or closed on {today.strftime('%b %d, %Y')}"))
-    # ----------------------------------
+        msg = f"LOAN {status_str}: Balance cleared or closed on {today.strftime('%b %d, %Y')}"
+
+        existing_active = db.query(Alert).filter_by(loan_id=loan.id, alert_type=AlertType.partial_reminder, is_dismissed=False).first()
+        if existing_active:
+            existing_active.message = msg
+            existing_active.trigger_date = today
+        else:
+            existing_today = db.query(Alert).filter_by(loan_id=loan.id, alert_type=AlertType.partial_reminder, trigger_date=today).first()
+            if existing_today:
+                existing_today.message = msg
+                existing_today.is_dismissed = False
+            else:
+                db.add(Alert(loan_id=loan.id, alert_type=AlertType.partial_reminder, trigger_date=today, message=msg))
 
     db.commit()
     logger.info(f"Alert check complete for {today}")
-
 
 def run():
     logger.info("Worker started — alerts + interest accrual")
