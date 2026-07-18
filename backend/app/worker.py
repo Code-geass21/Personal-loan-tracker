@@ -43,28 +43,35 @@ def generate_alerts(db: Session):
                 else:
                     future_emis.append(emi_date)
 
-            # Most Recent Missed EMI Alert
-            # Most Recent Missed EMI Alert
-            if past_emis:
-                last_missed = past_emis[-1]
-                days_late = (today - last_missed).days
+            # Most Recent Missed EMI Alert (The Arrears Check)
+            if past_emis and getattr(loan, 'emi_amount', None):
+                last_scheduled_date = past_emis[-1]
+                days_late = (today - last_scheduled_date).days
 
-                # 1. Search for ANY active overdue alert for this loan (ignoring the date)
-                existing_overdue = db.query(Alert).filter_by(
-                    loan_id=loan.id,
-                    alert_type=AlertType.overdue,
-                    is_dismissed=False # Only look for active ones
-                ).first()
+                # 1. Calculate how much they SHOULD have paid by now
+                expected_total_paid = loan.emi_amount * len(past_emis)
 
-                new_message = f"EMI scheduled for {last_missed.strftime('%b %d, %Y')} is overdue by {days_late} days!"
+                # 2. Check if they are actually behind on their payments!
+                if loan.total_paid < expected_total_paid:
+                    amount_behind = expected_total_paid - loan.total_paid
+                    emis_missed = round(float(amount_behind / loan.emi_amount), 1)
 
-                if existing_overdue:
-                    # 2. If it exists, just update the message and the trigger date!
-                    existing_overdue.message = new_message
-                    existing_overdue.trigger_date = today
-                else:
-                    # 3. If it doesn't exist, create a new one
-                    db.add(Alert(loan_id=loan.id, alert_type=AlertType.overdue, trigger_date=today, message=new_message))
+                    # 3. UPSERT LOGIC: Search for ANY active overdue alert
+                    existing_overdue = db.query(Alert).filter_by(
+                        loan_id=loan.id,
+                        alert_type=AlertType.overdue,
+                        is_dismissed=False
+                    ).first()
+
+                    new_message = f"Account in Arrears! ~{emis_missed} EMIs behind ({amount_behind:.2f} {loan.currency}). Most recent schedule is {days_late} days late."
+
+                    if existing_overdue:
+                        # Update the existing alert instead of making duplicates
+                        existing_overdue.message = new_message
+                        existing_overdue.trigger_date = today
+                    else:
+                        # Create a new one if it doesn't exist
+                        db.add(Alert(loan_id=loan.id, alert_type=AlertType.overdue, trigger_date=today, message=new_message))
 
             # Next Upcoming EMI Alert
             if future_emis:
