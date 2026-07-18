@@ -35,8 +35,11 @@ def recalculate_loan_state(db: Session, loan_id: str):
 
     interest_type = loan.get("interest_type", "simple") if "interest_type" in loan else "simple"
 
-    # --- THE MISSING LINK: Read the Immutable Snapshot from the Database ---
-    day_count_method = loan.get("day_count_method", "actual_365")
+    # If it's a formal bank loan, use 30/360. Otherwise, use exact Pro-Rata.
+    if loan.get("institution_type") == "institutional":
+        day_count_method = "bank_30_360"
+    else:
+        day_count_method = "actual_365"
     # -----------------------------------------------------------------------
 
     total_interest_accrued = Decimal('0')
