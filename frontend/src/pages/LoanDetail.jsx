@@ -157,7 +157,8 @@ export default function LoanDetail() {
         amount: parseFloat(feeForm.amount),
         status: feeForm.status || "pending",
         tax_rate: parseFloat(feeForm.tax_rate) || 0,
-        tax_amount: 0
+        tax_amount: 0,
+        created_at: feeForm.created_at ? `${feeForm.created_at}T12:00:00Z` : undefined
       };
 
       console.log("Sending Fee Data to Backend:", payload);
@@ -471,7 +472,10 @@ export default function LoanDetail() {
                     const startDate = new Date(loan.emi_start_date || loan.date_issued);
                     const emiBase = parseFloat(loan.emi_amount) || 0;
                     const isSimple = loan.interest_type === 'simple';
-                    const annualRate = parseFloat(loan.interest_rate) || 0;
+                    let annualRate = parseFloat(loan.interest_rate) || 0;
+                    if (loan.interest_period === 'monthly' && annualRate < 10) {
+                      annualRate = annualRate * 12;
+                    }
                     let remainingPrincipal = parseFloat(loan.principal) || 0;
 
                     // Pre-calculate flat interest for simple interest loans
@@ -541,11 +545,12 @@ export default function LoanDetail() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div className="card-title" style={{ marginBottom: 0 }}>Upfront Fees & Charges</div>
-            {loan.status !== 'settled' && loan.status !== 'cancelled' && (
-              <button className="btn btn-primary btn-sm" onClick={() => setFeeModal(true)}>
+            <button className="btn btn-primary btn-sm" onClick={() => {
+                setFeeForm({ ...EMPTY_FEE, created_at: loan.date_issued });
+                setFeeModal(true);
+              }}>
                 <Plus size={13} /> Add Charge
               </button>
-            )}
           </div>
           {fees.length === 0 ? (
             <div className="empty"><div className="empty-text">No upfront fees attached.</div></div>
@@ -587,11 +592,12 @@ export default function LoanDetail() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div className="card-title" style={{ marginBottom: 0 }}>Payment History & Breakdown</div>
-            {loan.status !== 'settled' && loan.status !== 'cancelled' && (
-              <button className="btn btn-primary btn-sm" onClick={() => { setPayForm({...EMPTY_PAYMENT, amount: loan.balance_due}); setPayModal(true); }}>
+            <button className="btn btn-primary btn-sm" onClick={() => {
+                setFeeForm({ ...EMPTY_FEE, created_at: loan.date_issued });
+                setFeeModal(true);
+              }}>
                 <Plus size={13} /> Add Payment
               </button>
-            )}
           </div>
           {payments.length === 0 ? (
             <div className="empty"><div className="empty-text">No payments yet</div></div>
@@ -922,6 +928,14 @@ export default function LoanDetail() {
                 <option value="Other Charge">Other Charge</option>
               </select>
             </div>
+
+            <div className="form-group">
+                <label className="label">Date Incurred *</label>
+                <input className="input" type="date"
+                  value={feeForm.created_at || ''}
+                  onChange={e => setFeeForm({...feeForm, created_at: e.target.value})}
+                />
+              </div>
 
             <div className="grid-2" style={{ gap: 12 }}>
               <div className="form-group">

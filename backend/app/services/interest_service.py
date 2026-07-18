@@ -48,9 +48,10 @@ def accrue_interest(db: Session, loan_id: str = None) -> dict:
     today = date.today()
     stats = {"processed": 0, "entries_added": 0, "errors": 0}
 
+    # --- BUG FIX 1: Fetch emi_start_date from the database ---
     query = """
         SELECT id, principal, interest_rate, interest_type, interest_period,
-               date_issued, balance_due, total_interest, total_paid, status
+               date_issued, emi_start_date, balance_due, total_interest, total_paid, status
         FROM loans
         WHERE status IN ('active', 'partial', 'overdue')
           AND interest_rate > 0
@@ -83,11 +84,16 @@ def accrue_interest(db: Session, loan_id: str = None) -> dict:
                 current_start   = last["period_end"] + relativedelta(days=1)
                 opening_balance = Decimal(str(last["closing_balance"]))
             else:
-                current_start   = loan["date_issued"]
+                # --- BUG FIX 2: Use emi_start_date if it exists, otherwise fall back to date_issued ---
+                current_start   = loan["emi_start_date"] if loan["emi_start_date"] else loan["date_issued"]
                 opening_balance = principal
 
             entries      = 0
             new_interest = Decimal("0")
+
+            # --- New: Divisor logic ---
+            divisors = {"monthly": 12, "weekly": 52, "daily": 365, "yearly": 1}
+            divisor = Decimal(str(divisors.get(period.strip().lower(), 12)))
 
             # Process all complete periods up to today
             while True:
@@ -106,12 +112,19 @@ def accrue_interest(db: Session, loan_id: str = None) -> dict:
                     if effective_base < 0:
                         effective_base = Decimal("0")
                     opening_balance = effective_base
-                    interest = (effective_base * rate / Decimal("100")).quantize(
+                    # --- New: Divisor logic ---
+                    divisors = {"monthly": 12, "weekly": 52, "daily": 365, "yearly": 1}
+                    divisor = Decimal(str(divisors.get(period.strip().lower(), 12)))
+                    interest = (opening_balance * rate / Decimal("100") / divisor).quantize(
                         Decimal("0.01"), rounding=ROUND_HALF_UP
                     )
                 else:
+                    # --- New: Divisor logic ---
+                    divisors = {"monthly": 12, "weekly": 52, "daily": 365, "yearly": 1}
+                    divisor = Decimal(str(divisors.get(period.strip().lower(), 12)))
+
                     # Compound: use closing balance of previous period
-                    interest = (opening_balance * rate / Decimal("100")).quantize(
+                    interest = (opening_balance * rate / Decimal("100") / divisor).quantize(
                         Decimal("0.01"), rounding=ROUND_HALF_UP
                     )
 
