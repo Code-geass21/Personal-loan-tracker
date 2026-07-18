@@ -44,12 +44,27 @@ def generate_alerts(db: Session):
                     future_emis.append(emi_date)
 
             # Most Recent Missed EMI Alert
+            # Most Recent Missed EMI Alert
             if past_emis:
                 last_missed = past_emis[-1]
                 days_late = (today - last_missed).days
-                existing_overdue = db.query(Alert).filter_by(loan_id=loan.id, alert_type=AlertType.overdue, trigger_date=today).first()
-                if not existing_overdue:
-                    db.add(Alert(loan_id=loan.id, alert_type=AlertType.overdue, trigger_date=today, message=f"EMI scheduled for {last_missed.strftime('%b %d, %Y')} is overdue by {days_late} days!"))
+
+                # 1. Search for ANY active overdue alert for this loan (ignoring the date)
+                existing_overdue = db.query(Alert).filter_by(
+                    loan_id=loan.id,
+                    alert_type=AlertType.overdue,
+                    is_dismissed=False # Only look for active ones
+                ).first()
+
+                new_message = f"EMI scheduled for {last_missed.strftime('%b %d, %Y')} is overdue by {days_late} days!"
+
+                if existing_overdue:
+                    # 2. If it exists, just update the message and the trigger date!
+                    existing_overdue.message = new_message
+                    existing_overdue.trigger_date = today
+                else:
+                    # 3. If it doesn't exist, create a new one
+                    db.add(Alert(loan_id=loan.id, alert_type=AlertType.overdue, trigger_date=today, message=new_message))
 
             # Next Upcoming EMI Alert
             if future_emis:
