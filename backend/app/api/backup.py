@@ -39,13 +39,17 @@ def run_backup(db: Session = Depends(get_db)):
                 return obj.isoformat()
             return str(obj)
 
-        persons  = db.execute(text("SELECT * FROM persons ORDER BY full_name")).mappings().all()
-        loans    = db.execute(text("SELECT * FROM v_loan_summary ORDER BY date_issued DESC")).mappings().all()
-        payments = db.execute(text("SELECT * FROM payments ORDER BY payment_date")).mappings().all()
-        interest = db.execute(text("SELECT * FROM interest_ledger ORDER BY period_start")).mappings().all()
-        targets  = db.execute(text("SELECT * FROM targets")).mappings().all()
-        alerts   = db.execute(text("SELECT * FROM alerts ORDER BY trigger_date DESC")).mappings().all()
-        audit    = db.execute(text("SELECT * FROM audit_log ORDER BY changed_at DESC")).mappings().all()
+        persons     = db.execute(text("SELECT * FROM persons ORDER BY full_name")).mappings().all()
+        # FIX 1: Backup the raw table, not the View!
+        loans       = db.execute(text("SELECT * FROM loans ORDER BY date_issued DESC")).mappings().all()
+        # FIX 2: Add Fees and Attachments
+        loan_fees   = db.execute(text("SELECT * FROM loan_fees ORDER BY created_at")).mappings().all()
+        attachments = db.execute(text("SELECT * FROM attachments ORDER BY uploaded_at")).mappings().all()
+        payments    = db.execute(text("SELECT * FROM payments ORDER BY payment_date")).mappings().all()
+        interest    = db.execute(text("SELECT * FROM interest_ledger ORDER BY period_start")).mappings().all()
+        targets     = db.execute(text("SELECT * FROM targets")).mappings().all()
+        alerts      = db.execute(text("SELECT * FROM alerts ORDER BY trigger_date DESC")).mappings().all()
+        audit       = db.execute(text("SELECT * FROM audit_log ORDER BY changed_at DESC")).mappings().all()
         app_settings = db.execute(text("SELECT * FROM app_settings")).mappings().all()
 
         data = {
@@ -53,6 +57,8 @@ def run_backup(db: Session = Depends(get_db)):
             "app_version":     "1.0.0",
             "persons":         [dict(r) for r in persons],
             "loans":           [dict(r) for r in loans],
+            "loan_fees":       [dict(r) for r in loan_fees],
+            "attachments":     [dict(r) for r in attachments],
             "payments":        [dict(r) for r in payments],
             "interest_ledger": [dict(r) for r in interest],
             "targets":         [dict(r) for r in targets],
@@ -68,10 +74,12 @@ def run_backup(db: Session = Depends(get_db)):
             "status": "ok",
             "file":   f"data_{timestamp}.json",
             "records": {
-                "persons":  len(data["persons"]),
-                "loans":    len(data["loans"]),
-                "payments": len(data["payments"]),
-                "targets":  len(data["targets"]),
+                "persons":     len(data["persons"]),
+                "loans":       len(data["loans"]),
+                "loan_fees":   len(data.get("loan_fees", [])),
+                "attachments": len(data.get("attachments", [])),
+                "payments":    len(data["payments"]),
+                "targets":     len(data["targets"]),
             }
         }
     except Exception as e:

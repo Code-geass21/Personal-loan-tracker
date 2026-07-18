@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "/app/uploads"
     MAX_UPLOAD_MB: int = 20
     ALERT_LEAD_DAYS: int = 7
-    BACKUP_DIR: str = "/home/tony/docker/loan-tracker/backups"
+    BACKUP_DIR: str = "/backups"
     DEFAULT_CURRENCY: str = "INR"
     ENVIRONMENT: str = "production"
 

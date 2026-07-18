@@ -9,6 +9,7 @@ import Loans from './pages/Loans'
 import LoanDetail from './pages/LoanDetail'
 import Alerts from './pages/Alerts'
 import Restore from './pages/Restore'
+import Backup from './pages/Backup'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="loans/:id" element={<LoanDetail />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="restore" element={<Restore />} />
+          <Route path="backup" element={<Backup />} />
         </Route>
       </Routes>
     </>

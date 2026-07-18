@@ -19,6 +19,7 @@ export default function Layout() {
     { to: '/people',    label: 'People',    icon: '👥' },
     { to: '/loans',     label: 'Loans',     icon: '💰' },
     { to: '/alerts',    label: 'Alerts',    icon: '🔔', badge: alertCount },
+    { to: '/backup',    label: 'Backup',    icon: '💾' },
     { to: '/restore',   label: 'Restore',   icon: '⏪' },
   ]
 

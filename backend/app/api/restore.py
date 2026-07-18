@@ -37,6 +37,7 @@ async def restore_from_json(
         db.execute(text("DELETE FROM interest_ledger"))
         db.execute(text("DELETE FROM targets"))
         db.execute(text("DELETE FROM attachments"))
+        db.execute(text("DELETE FROM loan_fees")) # <-- ADD THIS LINE
         db.execute(text("DELETE FROM payments"))
         db.execute(text("DELETE FROM loans"))
         db.execute(text("DELETE FROM persons"))
@@ -75,32 +76,39 @@ async def restore_from_json(
             db.execute(text("""
                 INSERT INTO loans (id, person_id, direction, principal, currency,
                     interest_rate, interest_type, interest_period,
+                    institution_type, emi_start_date, tenure_months, emi_amount, day_count_method,
                     date_issued, due_date, status, purpose, notes,
                     total_paid, total_interest, balance_due, created_at, updated_at)
                 VALUES (:id, :person_id, :direction, :principal, :currency,
                     :interest_rate, :interest_type, :interest_period,
+                    :institution_type, :emi_start_date, :tenure_months, :emi_amount, :day_count_method,
                     :date_issued, :due_date, :status, :purpose, :notes,
                     :total_paid, :total_interest, :balance_due, :created_at, :updated_at)
                 ON CONFLICT (id) DO NOTHING
             """), {
-                "id":              l.get("id"),
-                "person_id":       l.get("person_id"),
-                "direction":       l.get("direction"),
-                "principal":       l.get("principal"),
-                "currency":        l.get("currency", "INR"),
-                "interest_rate":   l.get("interest_rate", 0),
-                "interest_type":   l.get("interest_type", "simple"),
-                "interest_period": l.get("interest_period", "monthly"),
-                "date_issued":     l.get("date_issued"),
-                "due_date":        l.get("due_date"),
-                "status":          l.get("status", "active"),
-                "purpose":         l.get("purpose"),
-                "notes":           l.get("notes"),
-                "total_paid":      l.get("total_paid", 0),
-                "total_interest":  l.get("total_interest", 0),
-                "balance_due":     l.get("balance_due", 0),
-                "created_at":      ts(l.get("created_at")),
-                "updated_at":      ts(l.get("updated_at")),
+                "id":               l.get("id"),
+                "person_id":        l.get("person_id"),
+                "direction":        l.get("direction"),
+                "principal":        l.get("principal"),
+                "currency":         l.get("currency", "INR"),
+                "interest_rate":    l.get("interest_rate", 0),
+                "interest_type":    l.get("interest_type", "simple"),
+                "interest_period":  l.get("interest_period", "monthly"),
+                "institution_type": l.get("institution_type", "non_institutional"),
+                "emi_start_date":   l.get("emi_start_date"),
+                "tenure_months":    l.get("tenure_months"),
+                "emi_amount":       l.get("emi_amount"),
+                "day_count_method": l.get("day_count_method", "actual_365"),
+                "date_issued":      l.get("date_issued"),
+                "due_date":         l.get("due_date"),
+                "status":           l.get("status", "active"),
+                "purpose":          l.get("purpose"),
+                "notes":            l.get("notes"),
+                "total_paid":       l.get("total_paid", 0),
+                "total_interest":   l.get("total_interest", 0),
+                "balance_due":      l.get("balance_due", 0),
+                "created_at":       ts(l.get("created_at")),
+                "updated_at":       ts(l.get("updated_at")),
             })
             loan_count += 1
         db.commit()
@@ -129,6 +137,49 @@ async def restore_from_json(
             payment_count += 1
         db.commit()
         results["payments"] = {"status": "ok", "count": payment_count}
+
+        # Restore loan_fees
+        fee_count = 0
+        for f in data.get("loan_fees", []):
+            db.execute(text("""
+                INSERT INTO loan_fees (id, loan_id, fee_name, amount, tax_rate, tax_amount, status, created_at, updated_at)
+                VALUES (:id, :loan_id, :fee_name, :amount, :tax_rate, :tax_amount, :status, :created_at, :updated_at)
+                ON CONFLICT (id) DO NOTHING
+            """), {
+                "id":         f.get("id"),
+                "loan_id":    f.get("loan_id"),
+                "fee_name":   f.get("fee_name"),
+                "amount":     f.get("amount"),
+                "tax_rate":   f.get("tax_rate", 0),
+                "tax_amount": f.get("tax_amount", 0),
+                "status":     f.get("status", "pending"),
+                "created_at": ts(f.get("created_at")),
+                "updated_at": ts(f.get("updated_at")),
+            })
+            fee_count += 1
+        db.commit()
+        results["loan_fees"] = {"status": "ok", "count": fee_count}
+
+        # Restore attachments
+        attach_count = 0
+        for a in data.get("attachments", []):
+            db.execute(text("""
+                INSERT INTO attachments (id, loan_id, file_name, original_name, file_type, file_size, file_path, uploaded_at)
+                VALUES (:id, :loan_id, :file_name, :original_name, :file_type, :file_size, :file_path, :uploaded_at)
+                ON CONFLICT (id) DO NOTHING
+            """), {
+                "id":            a.get("id"),
+                "loan_id":       a.get("loan_id"),
+                "file_name":     a.get("file_name"),
+                "original_name": a.get("original_name"),
+                "file_type":     a.get("file_type"),
+                "file_size":     a.get("file_size"),
+                "file_path":     a.get("file_path"),
+                "uploaded_at":   ts(a.get("uploaded_at")),
+            })
+            attach_count += 1
+        db.commit()
+        results["attachments"] = {"status": "ok", "count": attach_count}
 
         # Restore targets
         target_count = 0

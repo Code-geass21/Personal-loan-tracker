@@ -135,7 +135,7 @@ export default function Restore() {
                     <td style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: 12 }}>{b.name}</td>
                     <td>{formatDate(b.created)}</td>
                     <td>{b.size_kb} KB</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{b.files.length} files</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{b.files ? b.files.length : 'Multiple'} files</td>
                   </tr>
                 ))}
               </tbody>
