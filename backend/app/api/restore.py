@@ -164,17 +164,19 @@ async def restore_from_json(
         attach_count = 0
         for a in data.get("attachments", []):
             db.execute(text("""
-                INSERT INTO attachments (id, loan_id, file_name, original_name, file_type, file_size, file_path, uploaded_at)
-                VALUES (:id, :loan_id, :file_name, :original_name, :file_type, :file_size, :file_path, :uploaded_at)
+                INSERT INTO attachments (id, parent_id, parent_type, file_type, original_name, file_path, mime_type, file_size_kb, notes, uploaded_at)
+                VALUES (:id, :parent_id, :parent_type, :file_type, :original_name, :file_path, :mime_type, :file_size_kb, :notes, :uploaded_at)
                 ON CONFLICT (id) DO NOTHING
             """), {
                 "id":            a.get("id"),
-                "loan_id":       a.get("loan_id"),
-                "file_name":     a.get("file_name"),
+                "parent_id":     a.get("parent_id"),
+                "parent_type":   a.get("parent_type", "loan"),
+                "file_type":     a.get("file_type", "other"),
                 "original_name": a.get("original_name"),
-                "file_type":     a.get("file_type"),
-                "file_size":     a.get("file_size"),
                 "file_path":     a.get("file_path"),
+                "mime_type":     a.get("mime_type", "application/pdf"),
+                "file_size_kb":  a.get("file_size_kb") if a.get("file_size_kb") else 1, # Prevents > 0 constraint crash
+                "notes":         a.get("notes"),
                 "uploaded_at":   ts(a.get("uploaded_at")),
             })
             attach_count += 1

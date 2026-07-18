@@ -36,11 +36,11 @@ services:
       ALERT_LEAD_DAYS: ${ALERT_LEAD_DAYS:-7}
       DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-INR}
       ENVIRONMENT: ${ENVIRONMENT:-production}
-      BACKUP_DIR: BACKUP_DIR: /app/backups
+      BACKUP_DIR: /app/backups
     volumes:
       - /home/tony/docker/loan-tracker/backend/uploads:/app/uploads
       - /home/tony/docker/loan-tracker/backend:/app
-      - /home/tony/docker/loan-tracker/backups:/backups
+      - /home/tony/docker/loan-tracker/backups:/app/backups
     ports:
       - "127.0.0.1:8001:8000"
     depends_on:
