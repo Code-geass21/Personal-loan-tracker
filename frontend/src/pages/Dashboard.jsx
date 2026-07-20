@@ -9,6 +9,21 @@ import { runFullBackup } from '../utils/export'
 import toast from 'react-hot-toast'
 import { formatCurrency, formatDate, statusColor, directionColor } from '../utils/format'
 
+// --- NEW: Time Travel Helper ---
+const getRecentMonths = () => {
+  const months = [];
+  const d = new Date();
+  for (let i = 0; i < 12; i++) {
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    months.push({ value, label });
+    d.setMonth(d.getMonth() - 1); // Go back one month
+  }
+  return months;
+};
+const recentMonths = getRecentMonths();
+// -------------------------------
+
 export default function Dashboard() {
   const [data, setData]       = useState(null)
   const [trends, setTrends]   = useState([])
@@ -17,11 +32,17 @@ export default function Dashboard() {
   const [targetModal, setTargetModal] = useState(false)
   const [targetAmount, setTargetAmount] = useState('')
   const [savingTarget, setSavingTarget] = useState(false)
+  // Automatically default to the exact current month (e.g., '2026-07')
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
   const { showReminder, lastBackup, markBackupDone, dismiss } = useBackupReminder()
 
   const load = () => {
     setLoading(true)
-    Promise.all([getDashboard(), getTrends(18), getTargetsProgress()])
+    // Pass the selectedMonth to the targets API
+    Promise.all([getDashboard(), getTrends(18), getTargetsProgress(selectedMonth || undefined)])
       .then(([d, t, tg]) => {
         setData(d.data)
         setTrends(t.data)
@@ -29,8 +50,8 @@ export default function Dashboard() {
       })
       .finally(() => setLoading(false))
   }
-
-  useEffect(() => { load() }, [])
+  // Auto-reload data when the selected month changes!
+  useEffect(() => { load() }, [selectedMonth])
 
   const handleBackup = async () => {
     try {
@@ -75,7 +96,21 @@ export default function Dashboard() {
           <div className="page-title">Dashboard</div>
           <div className="page-sub">Your loan overview</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Time Travel Picker (Bulletproof Dropdown) */}
+          {/* Time Travel Picker (Bulletproof Dropdown) */}
+          <select
+            className="btn btn-secondary"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            style={{ cursor: 'pointer', appearance: 'none', paddingRight: '24px' }}
+          >
+            {recentMonths.map((m, index) => (
+              <option key={m.value} value={m.value}>
+                {index === 0 ? `📅 Current (${m.label})` : `📅 ${m.label}`}
+              </option>
+            ))}
+          </select>
           <button className="btn btn-secondary" onClick={() => { setTargetAmount(globalTarget?.monthly_amount?.toString() || ''); setTargetModal(true) }}>🎯 Set Target</button>
           <button className="btn btn-secondary" onClick={load}>↻ Refresh</button>
         </div>
@@ -249,7 +284,7 @@ export default function Dashboard() {
               <div key={t.target_id} style={{ background: 'var(--bg-tertiary)', borderRadius: 10, padding: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <Link to={`/loans/${t.loan_id}`} style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-link)' }}>
-                    📍 Loan Target
+                     {t.person_name ? `${t.person_name}'s Goal` : 'Loan Target'}
                   </Link>
                   <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                     {formatCurrency(t.paid_this_month, t.currency)} / {formatCurrency(t.monthly_amount, t.currency)}

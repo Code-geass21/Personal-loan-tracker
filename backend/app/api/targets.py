@@ -13,24 +13,24 @@ def list_targets(db: Session = Depends(get_db)):
     return target_service.get_all(db)
 
 @router.get("/progress")
-def all_progress(db: Session = Depends(get_db)):
+def all_progress(month: Optional[str] = None, db: Session = Depends(get_db)):
     """Progress for the global target and every active loan target."""
     targets = target_service.get_all(db)
-    return [target_service.get_progress(db, t) for t in targets]
+    return [target_service.get_progress(db, t, month) for t in targets]
 
 @router.get("/global")
-def global_target(db: Session = Depends(get_db)):
+def global_target(month: Optional[str] = None, db: Session = Depends(get_db)):
     target = target_service.get_global(db)
     if not target:
         return None
-    return target_service.get_progress(db, target)
+    return target_service.get_progress(db, target, month)
 
 @router.get("/loan/{loan_id}")
-def loan_target(loan_id: UUID, db: Session = Depends(get_db)):
+def loan_target(loan_id: UUID, month: Optional[str] = None, db: Session = Depends(get_db)):
     target = target_service.get_for_loan(db, loan_id)
     if not target:
         return None
-    return target_service.get_progress(db, target)
+    return target_service.get_progress(db, target, month)
 
 @router.post("/", response_model=TargetResponse, status_code=201)
 def create_target(data: TargetCreate, db: Session = Depends(get_db)):

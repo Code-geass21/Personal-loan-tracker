@@ -51,9 +51,9 @@ export default api
 // ── Trends & Targets ──────────────────────────
 export const getTrends = (months = 18) => api.get(`/dashboard/trends?months=${months}`)
 export const getTargets = () => api.get('/targets/')
-export const getTargetsProgress = () => api.get('/targets/progress')
-export const getGlobalTarget = () => api.get('/targets/global')
-export const getLoanTarget = (loanId) => api.get(`/targets/loan/${loanId}`)
+export const getTargetsProgress = (month) => api.get('/targets/progress', { params: { month } })
+export const getGlobalTarget = (month) => api.get('/targets/global', { params: { month } })
+export const getLoanTarget = (loanId, month) => api.get(`/targets/loan/${loanId}`, { params: { month } })
 export const createTarget = (data) => api.post('/targets/', data)
 export const updateTarget = (id, data) => api.patch(`/targets/${id}`, data)
 export const deleteTarget = (id) => api.delete(`/targets/${id}`)

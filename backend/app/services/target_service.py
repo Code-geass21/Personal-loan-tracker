@@ -5,6 +5,7 @@ from typing import List, Optional
 from datetime import date
 from app.models.target import Target
 from app.schemas.target import TargetCreate, TargetUpdate
+from datetime import date, datetime
 
 def get_all(db: Session) -> List[Target]:
     rows = db.execute(text(
@@ -76,46 +77,66 @@ def delete(db: Session, target_id: UUID) -> bool:
     db.commit()
     return result.rowcount > 0
 
-def get_progress(db: Session, target: Target) -> dict:
-    today = date.today()
-    month_start = today.replace(day=1)
+def get_progress(db: Session, target: Target, target_month: str = None) -> dict:
+    # 1. Determine the Start and End of the target month
+    if target_month:
+        # Parse incoming 'YYYY-MM' from the React UI
+        dt = datetime.strptime(target_month, "%Y-%m").date()
+        month_start = dt.replace(day=1)
+    else:
+        month_start = date.today().replace(day=1)
+
+    # Cap the timeframe at the 1st of the NEXT month
+    if month_start.month == 12:
+        month_end = date(month_start.year + 1, 1, 1)
+    else:
+        month_end = date(month_start.year, month_start.month + 1, 1)
+
     scope_val = str(target.scope).replace("global_", "global")
 
+    # 2. Query with strict bounds (>= month_start AND < month_end)
     if scope_val == "global":
-        # Bank-Grade: Join with loans to only sum valid payments and ignore cancelled loans
         result = db.execute(text("""
             SELECT COALESCE(SUM(p.amount), 0) as total
             FROM payments p
             JOIN loans l ON p.loan_id = l.id
-            WHERE p.payment_date >= :month_start
+            WHERE p.payment_date >= :month_start AND p.payment_date < :month_end
             AND l.status != 'cancelled'
-        """), {"month_start": month_start}).mappings().first()
+        """), {"month_start": month_start, "month_end": month_end}).mappings().first()
     else:
-        # Isolated to a specific loan
         result = db.execute(text("""
             SELECT COALESCE(SUM(amount), 0) as total
             FROM payments
             WHERE loan_id = :loan_id
-            AND payment_date >= :month_start
-        """), {"loan_id": str(target.loan_id), "month_start": month_start}).mappings().first()
+            AND payment_date >= :month_start AND payment_date < :month_end
+        """), {"loan_id": str(target.loan_id), "month_start": month_start, "month_end": month_end}).mappings().first()
 
     paid          = float(result["total"])
     target_amount = float(target.monthly_amount)
-
-    # Calculate raw percentage (allows >100% if you overpay your goals!)
     raw_pct       = (paid / target_amount * 100) if target_amount > 0 else 0
-
-    # Cap at 100% purely for the UI progress bar width so it doesn't break CSS
     safe_pct      = min(100.0, raw_pct)
+
+    # NEW: Fetch the person's name if this is an individual loan target
+    person_name = None
+    if target.loan_id:
+        name_row = db.execute(text("""
+            SELECT p.full_name
+            FROM loans l JOIN persons p ON l.person_id = p.id
+            WHERE l.id = :loan_id
+        """), {"loan_id": str(target.loan_id)}).mappings().first()
+        if name_row:
+            person_name = name_row["full_name"]
 
     return {
         "target_id":       str(target.id),
         "scope":           scope_val,
         "loan_id":         str(target.loan_id) if target.loan_id else None,
+        "person_name":     person_name, # <-- Pass the name to React!
         "monthly_amount":  target_amount,
         "currency":        target.currency,
         "paid_this_month": paid,
         "remaining":       max(0, target_amount - paid),
-        "percentage":      round(safe_pct, 1), # Safe for CSS width
+        "percentage":      round(safe_pct, 1),
         "month":           month_start.strftime("%B %Y"),
+        "query_month":     month_start.strftime("%Y-%m")
     }
