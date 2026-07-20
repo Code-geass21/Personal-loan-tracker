@@ -62,6 +62,8 @@ export default function Dashboard() {
 
   const { summary, overdue, due_soon, recent_loans, unread_alerts } = data
   const netBalance = (summary.total_receivable || 0) - (summary.total_payable || 0)
+  const netCashflow = (summary.expected_monthly_in || 0) - (summary.expected_monthly_out || 0)
+  const expectedYield = summary.expected_yield || 0
 
   const globalTarget = targets.find(t => t.scope === 'global')
   const loanTargets  = targets.filter(t => t.scope === 'loan')
@@ -163,15 +165,38 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Net Balance */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="stat-label">Net Balance</div>
-        <div style={{ fontSize: 32, fontWeight: 700, marginTop: 4 }}
-          className={netBalance >= 0 ? 'balance-positive' : 'balance-negative'}>
-          {formatCurrency(netBalance)}
+      {/* Financial Health */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+        <div className="card">
+          <div className="stat-label">Net Principal Balance</div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}
+            className={netBalance >= 0 ? 'balance-positive' : 'balance-negative'}>
+            {formatCurrency(netBalance)}
+          </div>
+          <div className="stat-sub" style={{ marginTop: 4 }}>
+            {netBalance >= 0 ? 'You are owed more than you owe' : 'You owe more than you are owed'}
+          </div>
         </div>
-        <div className="stat-sub" style={{ marginTop: 4 }}>
-          {netBalance >= 0 ? 'Overall you are owed more than you owe' : 'Overall you owe more than you are owed'}
+
+        <div className="card">
+          <div className="stat-label">Expected Monthly Cashflow</div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}
+            className={netCashflow >= 0 ? 'balance-positive' : 'balance-negative'}>
+            {formatCurrency(netCashflow)} / mo
+          </div>
+          <div className="stat-sub" style={{ marginTop: 4 }}>
+            Net EMI cashflow expected every 30 days
+          </div>
+        </div>
+
+        <div className="card" style={{ background: 'var(--bg-tertiary)', border: '1px solid #bbf7d0' }}>
+          <div className="stat-label">Lifetime Expected Yield</div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: '#16a34a' }}>
+            {formatCurrency(expectedYield)}
+          </div>
+          <div className="stat-sub" style={{ marginTop: 4, color: 'var(--text-secondary)' }}>
+            Total projected profit from active loans
+          </div>
         </div>
       </div>
 
