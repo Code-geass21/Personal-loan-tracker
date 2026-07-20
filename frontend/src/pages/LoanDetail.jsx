@@ -116,6 +116,25 @@ export default function LoanDetail() {
     finally { setSavingEdit(false) }
   }
 
+  const saveTarget = async () => {
+    setSavingTarget(true);
+    try {
+      await createTarget({
+        scope: 'loan',
+        loan_id: id,
+        monthly_amount: parseFloat(targetAmount),
+        currency: loan.currency
+      });
+      toast.success('Monthly target set for this loan');
+      setTargetModal(false);
+      load(); // Reloads the page to fetch the new target progress
+    } catch {
+      toast.error('Failed to save target');
+    } finally {
+      setSavingTarget(false);
+    }
+  }
+
   const handlePreClose = async () => {
     if (!confirm("Are you sure you want to completely settle and close this loan?")) return;
     setSaving(true);
@@ -361,6 +380,19 @@ export default function LoanDetail() {
                 <div style={{ width: `${principalProgress}%`, height: '100%', background: '#2563eb', transition: 'width 0.5s ease-out' }} />
               </div>
             </div>
+
+            {/* --- NEW: Monthly Goal Progress Bar --- */}
+            {loanTarget && (
+              <div style={{ marginTop: 16, width: '100%', maxWidth: 400 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6, fontWeight: 600 }}>
+                  <span style={{ color: '#16a34a' }}>Goal Progress: {formatCurrency(loanTarget.paid_this_month, loan.currency)}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Target: {formatCurrency(loanTarget.monthly_amount, loan.currency)} / mo</span>
+                </div>
+                <div style={{ width: '100%', height: 8, background: 'var(--bg-tertiary)', borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                  <div style={{ width: `${loanTarget.percentage}%`, height: '100%', background: loanTarget.percentage >= 100 ? '#16a34a' : '#0ea5e9', transition: 'width 0.5s ease-out' }} />
+                </div>
+              </div>
+            )}
             {/* ---------------------------------------- */}
           </div>
 
@@ -377,6 +409,9 @@ export default function LoanDetail() {
               </>
             )}
 
+            <button className="btn btn-secondary btn-sm" onClick={() => { setTargetAmount(loanTarget?.monthly_amount?.toString() || ''); setTargetModal(true); }}>
+              🎯 Set Target
+            </button>
             <button className="btn btn-secondary btn-sm" onClick={openEditModal}>✏ Edit Loan</button>
 
             <select
@@ -1038,6 +1073,31 @@ export default function LoanDetail() {
           </div>
         </div>
       )}
+      {/* --- NEW: Set Loan Target Modal --- */}
+      {targetModal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setTargetModal(false)}>
+          <div className="modal" style={{ maxWidth: 400 }}>
+            <div className="modal-title">🎯 Set Monthly Target</div>
+            <div className="form-group">
+              <label className="label">Monthly payment target for this loan ({loan.currency})</label>
+              <input className="input" type="number" min="0" step="100"
+                placeholder="e.g. 5000"
+                value={targetAmount}
+                onChange={e => setTargetAmount(e.target.value)} />
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 6 }}>
+                Track how much you want to collect or pay for this specific loan every month.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button className="btn btn-secondary" onClick={() => setTargetModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveTarget} disabled={savingTarget}>
+                {savingTarget ? 'Saving...' : 'Save Target'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ---------------------------------- */}
     </div>
   );
 }

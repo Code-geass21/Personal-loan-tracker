@@ -82,19 +82,31 @@ def get_progress(db: Session, target: Target) -> dict:
     scope_val = str(target.scope).replace("global_", "global")
 
     if scope_val == "global":
+        # Bank-Grade: Join with loans to only sum valid payments and ignore cancelled loans
         result = db.execute(text("""
-            SELECT COALESCE(SUM(amount), 0) as total
-            FROM payments WHERE payment_date >= :month_start
+            SELECT COALESCE(SUM(p.amount), 0) as total
+            FROM payments p
+            JOIN loans l ON p.loan_id = l.id
+            WHERE p.payment_date >= :month_start
+            AND l.status != 'cancelled'
         """), {"month_start": month_start}).mappings().first()
     else:
+        # Isolated to a specific loan
         result = db.execute(text("""
             SELECT COALESCE(SUM(amount), 0) as total
-            FROM payments WHERE loan_id = :loan_id AND payment_date >= :month_start
+            FROM payments
+            WHERE loan_id = :loan_id
+            AND payment_date >= :month_start
         """), {"loan_id": str(target.loan_id), "month_start": month_start}).mappings().first()
 
     paid          = float(result["total"])
     target_amount = float(target.monthly_amount)
-    pct           = min(100, (paid / target_amount * 100)) if target_amount > 0 else 0
+
+    # Calculate raw percentage (allows >100% if you overpay your goals!)
+    raw_pct       = (paid / target_amount * 100) if target_amount > 0 else 0
+
+    # Cap at 100% purely for the UI progress bar width so it doesn't break CSS
+    safe_pct      = min(100.0, raw_pct)
 
     return {
         "target_id":       str(target.id),
@@ -104,6 +116,6 @@ def get_progress(db: Session, target: Target) -> dict:
         "currency":        target.currency,
         "paid_this_month": paid,
         "remaining":       max(0, target_amount - paid),
-        "percentage":      round(pct, 1),
+        "percentage":      round(safe_pct, 1), # Safe for CSS width
         "month":           month_start.strftime("%B %Y"),
     }
