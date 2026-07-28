@@ -8,9 +8,13 @@ from app.schemas.target import TargetCreate, TargetUpdate
 from datetime import date, datetime
 
 def get_all(db: Session) -> List[Target]:
-    rows = db.execute(text(
-        "SELECT * FROM targets WHERE is_active = true ORDER BY created_at"
-    )).mappings().all()
+    rows = db.execute(text("""
+        SELECT t.* FROM targets t
+        LEFT JOIN loans l ON t.loan_id = l.id
+        WHERE t.is_active = true
+          AND (t.scope = 'global' OR (t.scope = 'loan' AND l.id IS NOT NULL))
+        ORDER BY t.created_at
+    """)).mappings().all()
     return [Target(**dict(r)) for r in rows]
 
 def get_by_id(db: Session, target_id: UUID) -> Optional[Target]:
