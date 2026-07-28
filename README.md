@@ -1,4 +1,3 @@
-```markdown
 # Personal Loan Tracker
 
 A modern, containerized full-stack application designed to manage personal loans, calculate EMIs, track historical financial goals, and securely store loan-related documents. 
@@ -12,14 +11,12 @@ This application is 100% containerized and orchestrated via Docker/Portainer.
 * **Web Server / Proxy:** Nginx
 
 ---
-
 ## 🚀 Quick Start (Local Development)
 
 1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/yourusername/loan-tracker.git](https://github.com/yourusername/loan-tracker.git)
-   cd loan-tracker
-
+```bash
+   git clone 'https://github.com/Code-geass21/Personal-loan-tracker.git'
+   cd Personal-loan-tracker
 ```
 
 2. **Set up Environment Variables:**
@@ -45,7 +42,9 @@ Open your browser and navigate to `http://localhost:8090` (Routed via Nginx).
 
 ## 🛠️ Production Deployment & Troubleshooting Guide
 
-When migrating this application to a new host machine, cloud server (AWS/DigitalOcean), or simply recovering from a crash, be aware of these **6 Critical Deployment Rules** & also i have added folder named `"Read me !"` (Where you can find solution guide and necessary files for these initial problems with solution):
+When migrating this application to a new host machine, cloud server (AWS/DigitalOcean), or simply recovering from a crash, be aware of these **6 Critical Deployment Rules**.
+
+*(Note: I have also added a folder named `"Read me !"` in this repository where you can find detailed PDF solution guides and necessary files for fixing these initial deployment problems.)*
 
 ### 1. The Secrets Rule (Missing `.env`)
 
@@ -88,11 +87,3 @@ When migrating this application to a new host machine, cloud server (AWS/Digital
 
 * Database and Backend ports are explicitly bound to `127.0.0.1` in `docker-compose.yml` to prevent public internet access.
 * All external traffic MUST pass through the Nginx reverse proxy on port `8090`.
-
-```
-
-*** This covers everything! Your infrastructure, deployment rules, and custom data-restoration scripts are now perfectly documented for GitHub. 
-
-Shall we move on to **Option B: Building the In-App "Help & Guides" React Page** so your non-technical users know how to use the app?
-
-```
