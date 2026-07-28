@@ -1,7 +1,0 @@
-Set B: The 3 "Docker/Infrastructure" Traps (From our initial project setup)
-
-1. The Networking / Proxy Trap: Ensuring the frontend correctly routes API calls through Nginx rather than hardcoding localhost, avoiding CORS nightmares.
-
-2. The Bind Mount Override Trap: Mounting local host directories directly into the containers (e.g., - /home/tony/docker/loan-tracker/backend:/app). While great for live-reloading, it means host files override the built image, causing severe sync conflicts if you run pip install inside the container but not on the host.
-
-3. The Database Initialization Trap: You mounted init.sql to /docker-entrypoint-initdb.d/. Postgres only runs this the very first time the container starts. If you edit the SQL file later, it does nothing. (Side note: I noticed you built restore.py to completely wipe and rebuild the database from JSON backups—that is a brilliant, brute-force workaround to this exact trap!)
