@@ -1,130 +1,98 @@
+```markdown
 # Personal Loan Tracker
 
-A comprehensive self-hosted personal loan tracker.
-Track money you lent and borrowed — with full payment history,
-interest calculation, file attachments, and alerts.
+A modern, containerized full-stack application designed to manage personal loans, calculate EMIs, track historical financial goals, and securely store loan-related documents. 
 
-Runs 100% locally on Docker / Portainer.
-
----
-
-## Stack
-
-| Service    | Image / Tech        | Port (local) |
-|------------|---------------------|--------------|
-| Database   | PostgreSQL 16       | 5432         |
-| Backend    | FastAPI (Python)    | 8000         |
-| Frontend   | React + Vite        | 5173         |
-| Proxy      | Nginx               | **8080**     |
-| Worker     | Python cron job     | —            |
+## 🏗️ Architecture Stack
+This application is 100% containerized and orchestrated via Docker/Portainer.
+* **Frontend:** React + Vite
+* **Backend:** Python + FastAPI
+* **Database:** PostgreSQL (with automated JSON backup/restore capabilities)
+* **Background Tasks:** Python Worker
+* **Web Server / Proxy:** Nginx
 
 ---
 
-## Quick Start (Kubuntu + Docker)
+## 🚀 Quick Start (Local Development)
 
-### 1. Clone / copy the project
-```bash
-cd ~/projects
-# copy this folder here
-cd loan-tracker
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/yourusername/loan-tracker.git](https://github.com/yourusername/loan-tracker.git)
+   cd loan-tracker
+
 ```
 
-### 2. Create your .env file
+2. **Set up Environment Variables:**
+For security, secrets are not stored in version control. You must create your own `.env` file.
 ```bash
 cp .env.example .env
-nano .env   # set your passwords and secret key
+# Edit .env and insert your secure passwords and keys
+
 ```
 
-### 3. Start everything
+
+3. **Start the Stack:**
 ```bash
-docker compose up -d
+docker-compose up -d
+
 ```
 
-### 4. Open the app
-```
-http://localhost:8080
-```
+
+4. **Access the App:**
+Open your browser and navigate to `http://localhost:8090` (Routed via Nginx).
 
 ---
 
-## Portainer Setup
+## 🛠️ Production Deployment & Troubleshooting Guide
 
-1. Open Portainer → **Stacks** → **Add stack**
-2. Name it `loan-tracker`
-3. Paste the contents of `docker-compose.yml`
-4. Add environment variables from your `.env` file
-   under **Environment variables**
-5. Click **Deploy the stack**
+When migrating this application to a new host machine, cloud server (AWS/DigitalOcean), or simply recovering from a crash, be aware of these **6 Critical Deployment Rules** & also i have added folder named `"Read me !"` (Where you can find solution guide and necessary files for these initial problems with solution):
 
----
+### 1. The Secrets Rule (Missing `.env`)
 
-## Folder Structure
+**Issue:** The app crashes instantly on a new server complaining about database credentials.
+**Fix:** Git ignores `.env`. You must manually create the `.env` file on the new server using `.env.example` as a template before starting Docker.
 
-```
-loan-tracker/
-├── docker-compose.yml
-├── .env.example
-├── .gitignore
-│
-├── backend/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── migrations/
-│   │   ├── init.sql      ← full schema + triggers
-│   │   └── seed.sql      ← sample data (dev only)
-│   └── app/
-│       ├── main.py
-│       ├── database.py
-│       ├── config.py
-│       ├── worker.py
-│       ├── models/       ← SQLAlchemy ORM models
-│       ├── schemas/      ← Pydantic request/response schemas
-│       ├── api/          ← FastAPI route handlers
-│       ├── services/     ← Business logic
-│       └── utils/        ← Interest calc, file handling
-│
-├── frontend/
-│   ├── Dockerfile
-│   ├── package.json
-│   └── src/
-│       ├── pages/        ← Dashboard, Loans, People, etc.
-│       ├── components/   ← Reusable UI components
-│       ├── hooks/        ← Custom React hooks
-│       └── utils/        ← API client, formatters
-│
-└── nginx/
-    └── nginx.conf
-```
+### 2. The Networking Rule (CORS & Localhost)
+
+**Issue:** The UI loads on a mobile phone or external network, but shows no data or throws a `CORS Error`.
+**Fix:** Never hardcode `http://localhost:8000` in the React frontend. Ensure `frontend/src/utils/api.js` uses relative paths (`baseURL: '/api'`). Nginx will automatically route the traffic to the FastAPI backend.
+
+### 3. The Port Collision Rule
+
+**Issue:** `docker-compose up` fails with `Bind for 0.0.0.0:5432 failed: port is already allocated.`
+**Fix:** The host server is already using that port. Edit `docker-compose.yml` and change the *left side* of the mapping to an open port (e.g., change `5432:5432` to `5433:5432`).
+
+### 4. The Production Volume Rule (Bind Mounts)
+
+**Issue:** The backend throws `ModuleNotFoundError` when deployed to a new system because the empty host directory overwrites the container's built-in Python libraries.
+**Fix:** Bind mounts (`- ./backend:/app`) are for local development live-reloading ONLY. In a production environment, comment out source-code volume mounts in `docker-compose.yml` so the container relies purely on its built image.
+
+### 5. The Persistent Uploads Rule
+
+**Issue:** Container restarts cause all uploaded Loan PDF attachments to permanently disappear.
+**Fix:** Ensure the uploads directory is securely mounted to the host in `docker-compose.yml` (`- ./uploads:/app/uploads`). Also, ensure the host directory has the proper Linux write permissions (`chmod -R 777 ./uploads`).
+
+### 6. The Database Update Rule (`init.sql` Ignored)
+
+**Issue:** Changes made to `backend/migrations/init.sql` do not apply when restarting the container.
+**Fix:** Postgres only runs `init.sql` if the data volume is completely empty. To force a schema update without losing data, use the built-in backup tools:
+
+1. Back up current data: `bash scripts/backup.sh`
+2. Destroy the database hard drive: `docker-compose down -v`
+3. Restart to trigger the new `init.sql`: `docker-compose up -d`
+4. Restore your data: `docker exec -it loan_tracker_backend python app/restore.py`
 
 ---
 
-## Data & Backups
+## 🔒 Security Notes
 
-All data lives in named Docker volumes:
-- `loan_tracker_postgres_data` — database
-- `loan_tracker_uploads` — attached files
+* Database and Backend ports are explicitly bound to `127.0.0.1` in `docker-compose.yml` to prevent public internet access.
+* All external traffic MUST pass through the Nginx reverse proxy on port `8090`.
 
-### Manual backup
-```bash
-# Database
-docker exec loan_tracker_db pg_dump -U loan_user loan_tracker > backup_$(date +%Y%m%d).sql
-
-# Uploads
-docker run --rm -v loan_tracker_uploads:/data -v $(pwd)/backups:/backup \
-  alpine tar czf /backup/uploads_$(date +%Y%m%d).tar.gz -C /data .
 ```
 
----
+*** This covers everything! Your infrastructure, deployment rules, and custom data-restoration scripts are now perfectly documented for GitHub. 
 
-## Features
+Shall we move on to **Option B: Building the In-App "Help & Guides" React Page** so your non-technical users know how to use the app?
 
-- Track loans you gave (lent) and received (borrowed)
-- Full contact info per person (name, phone, email, ID)
-- Simple and compound interest with per-period ledger
-- Log partial and full payments with method + reference
-- Attach photos, PDFs, and screenshots to loans/payments
-- Alerts: overdue, due-soon (7 days), partial reminders
-- Complete audit log of every change
-- Dashboard with net balance, overdue count, due soon
-- Export to CSV and per-loan PDF statements
-- 100% local — no cloud, no account, no tracking
+```
