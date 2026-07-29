@@ -21,6 +21,7 @@ export default function Layout() {
     { to: '/alerts',    label: 'Alerts',    icon: '🔔', badge: alertCount },
     { to: '/backup',    label: 'Backup',    icon: '💾' },
     { to: '/restore',   label: 'Restore',   icon: '⏪' },
+    { to: '/help',      label: 'Help & Guides', icon: '💡' }, // <-- NEW HELP LINK
   ]
 
   return (
