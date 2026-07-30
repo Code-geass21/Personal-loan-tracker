@@ -12,7 +12,10 @@ def get_all(db: Session) -> List[Target]:
         SELECT t.* FROM targets t
         LEFT JOIN loans l ON t.loan_id = l.id
         WHERE t.is_active = true
-          AND (t.scope = 'global' OR (t.scope = 'loan' AND l.id IS NOT NULL))
+          AND (
+              t.scope = 'global'
+              OR (t.scope = 'loan' AND l.id IS NOT NULL AND l.status = 'active')
+          )
         ORDER BY t.created_at
     """)).mappings().all()
     return [Target(**dict(r)) for r in rows]
