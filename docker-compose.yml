@@ -29,6 +29,7 @@ services:
     container_name: loan_tracker_backend
     restart: unless-stopped
     environment:
+      TZ: Asia/Kolkata
       DATABASE_URL: postgresql://${POSTGRES_USER:-loan_user}:${POSTGRES_PASSWORD:-changeme_strong_password}@db:5432/${POSTGRES_DB:-loan_tracker}
       SECRET_KEY: ${SECRET_KEY:-changeme_secret_key_min_32_chars}
       UPLOAD_DIR: /app/uploads
@@ -93,6 +94,7 @@ services:
     restart: unless-stopped
     command: python -m app.worker
     environment:
+      TZ: Asia/Kolkata
       DATABASE_URL: postgresql://${POSTGRES_USER:-loan_user}:${POSTGRES_PASSWORD:-changeme_strong_password}@db:5432/${POSTGRES_DB:-loan_tracker}
       ALERT_LEAD_DAYS: ${ALERT_LEAD_DAYS:-7}
       SECRET_KEY: ${SECRET_KEY:-changeme_secret_key_min_32_chars}
