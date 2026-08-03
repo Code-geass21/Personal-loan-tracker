@@ -10,16 +10,19 @@ def smart_annualize_rate(entered_rate: Decimal, period: str) -> Decimal:
     period = period.lower() if period else 'yearly'
 
     if period == 'monthly':
-        # In informal lending: Entering '2' + Monthly means 2% per month (24% Annual)
-        # Entering '12' + Monthly usually means 12% Annual (1% per month)
         if rate < Decimal('10'):
             return rate * Decimal('12')
-        else:
-            return rate # Treat >= 10 as an annual rate already
-    elif period == 'daily':
-        return rate * Decimal('365')
+        return rate
+
     elif period == 'weekly':
-        return rate * Decimal('52')
+        if rate < Decimal('3'):  # E.g., 1% a week = 52% a year. 12% is definitely annual.
+            return rate * Decimal('52')
+        return rate
+
+    elif period == 'daily':
+        if rate < Decimal('0.5'): # E.g., 0.1% a day. If it's 12%, it's definitely annual.
+            return rate * Decimal('365')
+        return rate
 
     return rate # Fallback for 'yearly'
 
