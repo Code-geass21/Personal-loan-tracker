@@ -9,6 +9,8 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import logging
+from datetime import date, timedelta
+from app.utils.finance import smart_annualize_rate
 
 logger = logging.getLogger(__name__)
 
@@ -40,145 +42,128 @@ def _next_period_start(period_start: date, period: str) -> date:
         return period_start + relativedelta(years=1)
     return _next_month(period_start)
 
-def accrue_interest(db: Session, loan_id: str = None) -> dict:
-    """
-    Accrue interest for all eligible loans (or a specific loan).
-    Uses actual calendar periods, not fixed day counts.
-    """
-    today = date.today()
-    stats = {"processed": 0, "entries_added": 0, "errors": 0}
 
-    # --- BUG FIX 1: Fetch emi_start_date from the database ---
-    query = """
-        SELECT id, principal, interest_rate, interest_type, interest_period,
-               date_issued, emi_start_date, balance_due, total_interest, total_paid, status
-        FROM loans
-        WHERE status IN ('active', 'partial', 'overdue')
-          AND interest_rate > 0
+def accrue_interest(db: Session, loan_id: str = None):
     """
+    Forces every loan to accrue and log interest.
+    Uses Strict Daily math for informal loans, and Monthly math for EMI/bank loans.
+    """
+    stats = {"processed": 0, "entries_added": 0, "errors": 0}
+    today = date.today()
+
+    query = "SELECT * FROM loans WHERE status IN ('active', 'partial')"
     params = {}
     if loan_id:
-        query += " AND id = :loan_id"
-        params["loan_id"] = loan_id
+        query += " AND id = :lid"
+        params["lid"] = str(loan_id)
 
     loans = db.execute(text(query), params).mappings().all()
 
     for loan in loans:
         try:
-            lid            = str(loan["id"])
-            principal      = Decimal(str(loan["principal"]))
-            rate           = Decimal(str(loan["interest_rate"]))
-            interest_type  = str(loan["interest_type"])
-            period         = str(loan["interest_period"])
-            total_paid     = Decimal(str(loan["total_paid"] or 0))
+            lid = loan["id"]
+            principal = Decimal(str(loan["principal"]))
+            entered_rate = Decimal(str(loan["interest_rate"]))
+            date_issued = loan["date_issued"]
 
-            # Find last accrual
-            last = db.execute(text("""
-                SELECT period_end, closing_balance
-                FROM interest_ledger
-                WHERE loan_id = :lid
-                ORDER BY period_end DESC LIMIT 1
-            """), {"lid": lid}).mappings().first()
+            # Find the last recorded ledger date
+            last_entry = db.execute(
+                text("SELECT MAX(period_end) as max_end FROM interest_ledger WHERE loan_id = :lid"),
+                {"lid": lid}
+            ).mappings().first()
 
-            if last:
-                current_start   = last["period_end"] + relativedelta(days=1)
-                opening_balance = Decimal(str(last["closing_balance"]))
+            if last_entry and last_entry["max_end"]:
+                start_date = last_entry["max_end"] + timedelta(days=1)
             else:
-                # --- BUG FIX 2: Use emi_start_date if it exists, otherwise fall back to date_issued ---
-                current_start   = loan["emi_start_date"] if loan["emi_start_date"] else loan["date_issued"]
-                opening_balance = principal
+                start_date = date_issued
 
-            entries      = 0
-            new_interest = Decimal("0")
+            # Stop if we are already caught up to today
+            if start_date > today:
+                stats["processed"] += 1
+                continue
 
-            # --- New: Divisor logic ---
-            divisors = {"monthly": 12, "weekly": 52, "daily": 365, "yearly": 1}
-            divisor = Decimal(str(divisors.get(period.strip().lower(), 12)))
+            entries_added = 0
 
-            # Process all complete periods up to today
-            while True:
-                p_end = _period_end(current_start, period)
-                if p_end >= today:
-                    break  # Period not complete yet
+            # ==========================================
+            # --- THE SPLIT ENGINE STARTS EXACTLY HERE ---
+            # ==========================================
+            if loan.get("amortization_type") == "emi":
+                # BANK RULES: Calculate in monthly chunks to match formal EMI statements
+                from dateutil.relativedelta import relativedelta
+                current_date = start_date
+                next_month = current_date + relativedelta(months=1)
 
-                if interest_type == "simple":
-                    # Simple: use principal minus payments made before this period
-                    paid_before = db.execute(text("""
-                        SELECT COALESCE(SUM(amount), 0) as paid
-                        FROM payments
-                        WHERE loan_id = :lid AND payment_date < :p_start
-                    """), {"lid": lid, "p_start": current_start}).mappings().first()
-                    effective_base = principal - Decimal(str(paid_before["paid"]))
-                    if effective_base < 0:
-                        effective_base = Decimal("0")
-                    opening_balance = effective_base
-                    # --- New: Divisor logic ---
-                    divisors = {"monthly": 12, "weekly": 52, "daily": 365, "yearly": 1}
-                    divisor = Decimal(str(divisors.get(period.strip().lower(), 12)))
-                    interest = (opening_balance * rate / Decimal("100") / divisor).quantize(
-                        Decimal("0.01"), rounding=ROUND_HALF_UP
-                    )
-                else:
-                    # --- New: Divisor logic ---
-                    divisors = {"monthly": 12, "weekly": 52, "daily": 365, "yearly": 1}
-                    divisor = Decimal(str(divisors.get(period.strip().lower(), 12)))
+                while next_month <= today:
+                    # Bank Math: Annual Rate / 12
+                    monthly_rate = (entered_rate / Decimal("100")) / Decimal("12")
+                    monthly_interest = (principal * monthly_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-                    # Compound: use closing balance of previous period
-                    interest = (opening_balance * rate / Decimal("100") / divisor).quantize(
-                        Decimal("0.01"), rounding=ROUND_HALF_UP
-                    )
+                    if monthly_interest > 0:
+                        db.execute(text("""
+                            INSERT INTO interest_ledger (id, loan_id, period_start, period_end, opening_balance, interest_accrued, closing_balance, created_at)
+                            VALUES (gen_random_uuid(), :lid, :p_start, :p_end, :op_bal, :accrued, :cl_bal, NOW())
+                        """), {
+                            "lid": lid,
+                            "p_start": current_date,
+                            "p_end": next_month - relativedelta(days=1), # Closes the day before
+                            "op_bal": float(principal),
+                            "accrued": float(monthly_interest),
+                            "cl_bal": float(principal + monthly_interest)
+                        })
+                        entries_added += 1
 
-                closing_balance = opening_balance + interest
+                    current_date = next_month
+                    next_month = current_date + relativedelta(months=1)
 
-                # Insert — skip if period already exists
-                result = db.execute(text("""
-                    INSERT INTO interest_ledger
-                        (loan_id, period_start, period_end, opening_balance,
-                         interest_accrued, closing_balance, calc_type, rate_applied)
-                    VALUES
-                        (:lid, :p_start, :p_end, :opening_bal,
-                         :interest, :closing_bal, :calc_type, :rate)
-                    ON CONFLICT (loan_id, period_start) DO NOTHING
-                """), {
-                    "lid":         lid,
-                    "p_start":     current_start,
-                    "p_end":       p_end,
-                    "opening_bal": float(opening_balance),
-                    "interest":    float(interest),
-                    "closing_bal": float(closing_balance),
-                    "calc_type":   interest_type,
-                    "rate":        float(rate),
-                })
+            else:
+                # INFORMAL RULES: Strict Daily calculation for personal tracking
+                from app.utils.finance import smart_annualize_rate
+                annual_rate = smart_annualize_rate(entered_rate, loan["interest_period"])
+                daily_rate = (annual_rate / Decimal("100")) / Decimal("365")
 
-                if result.rowcount > 0:
-                    new_interest    += interest
-                    opening_balance  = closing_balance
-                    entries         += 1
+                current_date = start_date
 
-                current_start = _next_period_start(current_start, period)
+                while current_date <= today:
+                    daily_interest = (principal * daily_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-            if entries > 0:
-                # Recalculate totals from ledger (source of truth)
-                ledger_total = db.execute(text("""
-                    SELECT COALESCE(SUM(interest_accrued), 0) as total
-                    FROM interest_ledger WHERE loan_id = :lid
-                """), {"lid": lid}).mappings().first()
+                    if daily_interest > 0:
+                        db.execute(text("""
+                            INSERT INTO interest_ledger (id, loan_id, period_start, period_end, opening_balance, interest_accrued, closing_balance, created_at)
+                            VALUES (gen_random_uuid(), :lid, :p_start, :p_end, :op_bal, :accrued, :cl_bal, NOW())
+                        """), {
+                            "lid": lid,
+                            "p_start": current_date,
+                            "p_end": current_date,
+                            "op_bal": float(principal),
+                            "accrued": float(daily_interest),
+                            "cl_bal": float(principal + daily_interest)
+                        })
+                        entries_added += 1
 
-                total_interest = Decimal(str(ledger_total["total"]))
-                balance_due    = max(Decimal("0"), principal + total_interest - total_paid)
+                    current_date += timedelta(days=1)
+            # ==========================================
+            # --- THE SPLIT ENGINE ENDS EXACTLY HERE ---
+            # ==========================================
+
+            # Update the main loan totals
+            if entries_added > 0:
+                totals = db.execute(
+                    text("SELECT COALESCE(SUM(interest_accrued), 0) as total FROM interest_ledger WHERE loan_id = :lid"),
+                    {"lid": lid}
+                ).mappings().first()
+
+                total_interest = Decimal(str(totals["total"]))
+                total_paid = Decimal(str(loan["total_paid"] or 0))
+                balance_due = max(Decimal("0"), principal + total_interest - total_paid)
 
                 db.execute(text("""
-                    UPDATE loans SET
-                        total_interest = :ti,
-                        balance_due    = :bd,
-                        updated_at     = NOW()
-                    WHERE id = :lid
+                    UPDATE loans SET total_interest = :ti, balance_due = :bd, updated_at = NOW() WHERE id = :lid
                 """), {
-                    "ti":  float(total_interest),
-                    "bd":  float(balance_due),
+                    "ti": float(total_interest),
+                    "bd": float(balance_due),
                     "lid": lid,
                 })
-                stats["entries_added"] += entries
+                stats["entries_added"] += entries_added
 
             db.commit()
             stats["processed"] += 1
@@ -186,9 +171,8 @@ def accrue_interest(db: Session, loan_id: str = None) -> dict:
         except Exception as e:
             db.rollback()
             stats["errors"] += 1
-            logger.error(f"Interest accrual error for loan {loan['id']}: {e}")
+            logger.error(f"Accrual error for loan {loan['id']}: {e}")
 
-    logger.info(f"Interest accrual complete: {stats}")
     return stats
 
 

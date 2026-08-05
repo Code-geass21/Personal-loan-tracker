@@ -3,28 +3,20 @@ from datetime import date
 
 def smart_annualize_rate(entered_rate: Decimal, period: str) -> Decimal:
     """
-    Intelligently converts UI rate inputs into true Annual Rates.
-    Fixes the classic '12% per month vs 12% per year' confusion.
+    Strict conversion: Converts the entered UI rate to an Annual Percentage Rate (APR)
+    based EXACTLY on the dropdown period. No guessing.
     """
     rate = Decimal(str(entered_rate))
     period = period.lower() if period else 'yearly'
 
     if period == 'monthly':
-        if rate < Decimal('10'):
-            return rate * Decimal('12')
-        return rate
-
+        return rate * Decimal('12')
     elif period == 'weekly':
-        if rate < Decimal('3'):  # E.g., 1% a week = 52% a year. 12% is definitely annual.
-            return rate * Decimal('52')
-        return rate
-
+        return rate * Decimal('52')
     elif period == 'daily':
-        if rate < Decimal('0.5'): # E.g., 0.1% a day. If it's 12%, it's definitely annual.
-            return rate * Decimal('365')
-        return rate
+        return rate * Decimal('365')
 
-    return rate # Fallback for 'yearly'
+    return rate # Default: yearly (e.g., 9% remains 9%)
 
 def calculate_emi(principal: Decimal, annual_rate: Decimal, months: int) -> Decimal:
     """Calculates the fixed Equated Monthly Installment (EMI)."""
