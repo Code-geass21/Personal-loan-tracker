@@ -40,7 +40,7 @@ services:
       BACKUP_DIR: /app/backups
     volumes:
       - ./backend/uploads:/app/uploads
-      - ./backend:/app
+      #- ./backend:/app
       - ./backups:/app/backups
     ports:
       - "127.0.0.1:54317:8000"
@@ -64,9 +64,9 @@ services:
     environment:
       VITE_API_URL: /api
     volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/index.html:/app/index.html
-      - ./frontend/vite.config.js:/app/vite.config.js
+      #- ./frontend/src:/app/src
+      #- ./frontend/index.html:/app/index.html
+      #- ./frontend/vite.config.js:/app/vite.config.js
     depends_on:
       - backend
     networks:
