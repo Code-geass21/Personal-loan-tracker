@@ -25,7 +25,7 @@ docker run --rm \
 
 # 3. JSON export via API
 echo "📊 Exporting data as JSON..."
-curl -s -X POST http://localhost:8001/api/backup/run \
+curl -s -X POST http://localhost:54317/api/backup/run \
   > "$BACKUP_DIR/data_$DATE.json"
 
 echo ""

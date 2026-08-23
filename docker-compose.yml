@@ -13,7 +13,8 @@ services:
       - /home/tony/docker/loan-tracker/backend/migrations/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
       - /home/tony/docker/loan-tracker/backend/migrations/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
     ports:
-      - "127.0.0.1:5432:5432"
+      # CHANGED: Host port is now 54316
+      - "127.0.0.1:54316:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-loan_user} -d ${POSTGRES_DB:-loan_tracker}"]
       interval: 10s
@@ -43,7 +44,8 @@ services:
       - /home/tony/docker/loan-tracker/backend:/app
       - /home/tony/docker/loan-tracker/backups:/app/backups
     ports:
-      - "127.0.0.1:8001:8000"
+      # CHANGED: Host port is now 54317
+      - "127.0.0.1:54317:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -77,7 +79,8 @@ services:
     container_name: loan_tracker_nginx
     restart: unless-stopped
     ports:
-      - "8090:80"
+      # CHANGED: Host port is now 54318 (Open to local network)
+      - "54318:80"
     volumes:
       - /home/tony/docker/loan-tracker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
