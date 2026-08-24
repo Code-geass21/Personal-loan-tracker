@@ -10,8 +10,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_strong_password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      #- ./backend/migrations/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
-      #- ./backend/migrations/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+      - ./backend/migrations/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./backend/migrations/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
     ports:
       - "127.0.0.1:54316:5432"
     healthcheck:
