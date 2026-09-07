@@ -7,7 +7,7 @@ CREATE TABLE targets (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     scope           VARCHAR(50)  NOT NULL,  -- Reverted to VARCHAR to match legacy data
     loan_id         UUID         REFERENCES loans(id) ON DELETE CASCADE,
-    monthly_amount  NUMERIC(15,2) NOT NULL CHECK (monthly_amount > 0),
+    monthly_amount  NUMERIC(15,2) NOT NULL CHECK (monthly_amount >= 0),
     currency        CHAR(3)      NOT NULL DEFAULT 'INR',
     notes           TEXT,
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
