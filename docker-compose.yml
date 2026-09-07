@@ -2,8 +2,8 @@ version: "3.9"
 services:
   db:
     build:
-      context: ./backend/migrations
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/migrations/Dockerfile
     container_name: shadowdebt_db
     restart: unless-stopped
     environment:
