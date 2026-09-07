@@ -11,6 +11,7 @@
 backups/
 backend/uploads/
 *.sql
+!backend/migrations/*.sql
 *.tar.gz
 stack-status.txt
 

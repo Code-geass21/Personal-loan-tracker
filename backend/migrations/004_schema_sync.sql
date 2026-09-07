@@ -18,6 +18,8 @@ ALTER TABLE loans ADD COLUMN IF NOT EXISTS day_count_method day_count_method NOT
 ALTER TABLE loans ADD COLUMN IF NOT EXISTS emi_start_date DATE;
 
 -- 3. Fix the payments table
+-- 3. Fix the payments table and enums
+ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'upi';
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS tax_rate NUMERIC(5,2) DEFAULT 0;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(15,2) DEFAULT 0;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT FALSE;
