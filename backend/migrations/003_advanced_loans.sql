@@ -5,30 +5,25 @@
 
 -- 1. New ENUMS for advanced tracking
 CREATE TYPE amortization_type AS ENUM ('simple', 'emi', 'pro_rata');
-CREATE TYPE fee_type AS ENUM ('processing', 'appraisal', 'admin', 'late_fee', 'other');
+CREATE TYPE fee_status AS ENUM ('pending', 'paid', 'waived');
 
 -- 2. Update Loans Table
--- Add amortization type and loan term (required for EMI calculation)
-ALTER TABLE loans 
+ALTER TABLE loans
 ADD COLUMN amortization_type amortization_type NOT NULL DEFAULT 'simple',
 ADD COLUMN term_months INTEGER;
 
 -- 3. Update Payments Table
--- Track exactly how a payment was split
-ALTER TABLE payments 
+ALTER TABLE payments
 ADD COLUMN principal_component NUMERIC(15,2) NOT NULL DEFAULT 0,
-ADD COLUMN interest_component NUMERIC(15,2) NOT NULL DEFAULT 0,
-ADD COLUMN fee_component NUMERIC(15,2) NOT NULL DEFAULT 0;
+ADD COLUMN interest_component NUMERIC(15,2) NOT NULL DEFAULT 0;
 
 -- 4. Create Loan Fees Table
 CREATE TABLE loan_fees (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     loan_id UUID NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
-    fee_type fee_type NOT NULL DEFAULT 'other',
+    fee_name VARCHAR(100) NOT NULL,
     amount NUMERIC(15,2) NOT NULL CHECK (amount > 0),
-    is_capitalized BOOLEAN NOT NULL DEFAULT FALSE, -- True = added to principal balance, False = paid separately
-    is_paid BOOLEAN NOT NULL DEFAULT FALSE,
-    notes TEXT,
+    status fee_status NOT NULL DEFAULT 'pending',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

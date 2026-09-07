@@ -1,6 +1,14 @@
 -- 1. Drop the old view to modify tables safely
 DROP VIEW IF EXISTS v_loan_summary CASCADE;
 
+-- 1.5 Fix the persons table (Syncing missing columns from old DB)
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS entity_type VARCHAR(50) DEFAULT 'individual';
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS dob DATE;
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS id_expiry DATE;
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS trust_score INTEGER DEFAULT 50;
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS kyc_status TEXT DEFAULT 'pending';
+ALTER TABLE persons ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(200);
+
 -- 2. Fix the loans table
 ALTER TABLE loans RENAME COLUMN term_months TO tenure_months;
 ALTER TABLE loans ADD COLUMN IF NOT EXISTS institution_type VARCHAR(20) DEFAULT 'non_institutional';
