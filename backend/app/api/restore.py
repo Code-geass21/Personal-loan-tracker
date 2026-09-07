@@ -96,7 +96,7 @@ async def restore_from_json(
                 "interest_period":  l.get("interest_period", "monthly"),
                 "institution_type": l.get("institution_type", "non_institutional"),
                 "emi_start_date":   l.get("emi_start_date"),
-                "tenure_months":    l.get("tenure_months"),
+                "tenure_months":    l.get("tenure_months") or l.get("term_months"),
                 "emi_amount":       l.get("emi_amount"),
                 "day_count_method": l.get("day_count_method", "actual_365"),
                 "date_issued":      l.get("date_issued"),
@@ -183,6 +183,29 @@ async def restore_from_json(
         db.commit()
         results["attachments"] = {"status": "ok", "count": attach_count}
 
+
+        # Restore audit_log
+        audit_count = 0
+        for a in data.get("audit_log", []):
+            db.execute(text("""
+                INSERT INTO audit_log (id, loan_id, action, changed_field, old_value, new_value, description, changed_at)
+                VALUES (:id, :loan_id, :action, :changed_field, :old_value, :new_value, :description, :changed_at)
+                ON CONFLICT (id) DO NOTHING
+            """), {
+                "id":            a.get("id"),
+                "loan_id":       a.get("loan_id"),
+                "action":        a.get("action"),
+                "changed_field": a.get("changed_field"),
+                "old_value":     a.get("old_value"),
+                "new_value":     a.get("new_value"),
+                "description":   a.get("description"),
+                "changed_at":    ts(a.get("changed_at"))
+            })
+            audit_count += 1
+        db.commit()
+        results["audit_log"] = {"status": "ok", "count": audit_count}
+
+
         # Restore targets
         target_count = 0
         for t in data.get("targets", []):
@@ -216,6 +239,7 @@ async def restore_from_json(
                 "loans":    loan_count,
                 "payments": payment_count,
                 "targets":  target_count,
+                "audit_logs": audit_count
             }
         })
 

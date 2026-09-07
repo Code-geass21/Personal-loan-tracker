@@ -72,7 +72,7 @@ def accrue_interest(db: Session, loan_id: str = None):
 
                         if monthly_interest > 0:
                             db.execute(text("""
-                                INSERT INTO interest_ledger (id, loan_id, period_start, period_end, opening_balance, interest_accrued, closing_balance, created_at)
+                                INSERT INTO interest_ledger (id, loan_id, period_start, period_end, opening_balance, interest_accrued, closing_balance, calculated_at)
                                 VALUES (gen_random_uuid(), CAST(:lid AS UUID), :p_start, :p_end, :op_bal, :accrued, :cl_bal, NOW())
                             """), {
                                 "lid": lid,
@@ -98,7 +98,7 @@ def accrue_interest(db: Session, loan_id: str = None):
 
                         if daily_interest > 0:
                             db.execute(text("""
-                                INSERT INTO interest_ledger (id, loan_id, period_start, period_end, opening_balance, interest_accrued, closing_balance, created_at)
+                                INSERT INTO interest_ledger (id, loan_id, period_start, period_end, opening_balance, interest_accrued, closing_balance, calculated_at)
                                 VALUES (gen_random_uuid(), CAST(:lid AS UUID), :p_start, :p_end, :op_bal, :accrued, :cl_bal, NOW())
                             """), {
                                 "lid": lid,
