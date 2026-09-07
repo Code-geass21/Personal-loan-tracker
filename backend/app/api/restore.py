@@ -207,8 +207,22 @@ async def restore_from_json(
 
 
         # Restore targets
+        # Restore targets
         target_count = 0
         for t in data.get("targets", []):
+
+            # --- THE GHOST FIX ---
+            # If it's a loan target, verify the loan actually exists in the new database first
+            if t.get("scope") == "loan" and t.get("loan_id"):
+                loan_exists = db.execute(
+                    text("SELECT 1 FROM loans WHERE id = :id"),
+                    {"id": t.get("loan_id")}
+                ).scalar()
+
+                if not loan_exists:
+                    continue  # Skip this orphaned target to prevent a database crash!
+            # ---------------------
+
             db.execute(text("""
                 INSERT INTO targets (id, scope, loan_id, monthly_amount, currency,
                     notes, is_active, created_at, updated_at)
